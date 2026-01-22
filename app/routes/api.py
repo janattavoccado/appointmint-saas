@@ -744,7 +744,7 @@ def handle_agent_bot_message(restaurant, payload):
         "conversation": {"id": 123, ...},
         "sender": {"phone_number": "+1234567890", "name": "John", ...},
         "content": "Hello",
-        "attachments": [...]
+        "attachments": [{"file_type": "audio", "data_url": "..."}]
     }
     """
     try:
@@ -757,11 +757,13 @@ def handle_agent_bot_message(restaurant, payload):
         phone_number = sender.get('phone_number')
         sender_name = sender.get('name', 'Customer')
         content = payload.get('content', '')
+        attachments = payload.get('attachments', [])
         
         print(f"Message type: {message_type}", flush=True)
         print(f"Conversation ID: {conversation_id}", flush=True)
         print(f"Sender: {sender_name} ({phone_number})", flush=True)
         print(f"Content: {content}", flush=True)
+        print(f"Attachments: {len(attachments)} found", flush=True)
         
         # Skip outgoing messages (bot's own messages)
         if message_type == 'outgoing':
@@ -772,6 +774,47 @@ def handle_agent_bot_message(restaurant, payload):
         if not conversation_id:
             print("ERROR: Missing conversation_id", flush=True)
             return jsonify({'error': 'Missing conversation_id'}), 400
+        
+        # Check for audio attachments and transcribe if found
+        is_audio = any(att.get('file_type') == 'audio' for att in attachments)
+        if is_audio:
+            print("=== AUDIO MESSAGE DETECTED (Agent Bot) ===", flush=True)
+            try:
+                from app.services.audio_transcriber import AudioTranscriber, extract_audio_from_payload
+                
+                # Extract audio URL from payload
+                audio_url = extract_audio_from_payload(payload)
+                print(f"Audio URL: {audio_url[:100] if audio_url else 'None'}...", flush=True)
+                
+                if audio_url:
+                    # Transcribe the audio
+                    transcriber = AudioTranscriber()
+                    transcribed_text = transcriber.transcribe_from_url(audio_url)
+                    
+                    if transcribed_text:
+                        print(f"Audio transcribed successfully: {transcribed_text[:100]}...", flush=True)
+                        content = transcribed_text  # Use transcribed text as content
+                    else:
+                        print("Audio transcription returned empty text", flush=True)
+                        if restaurant.chatwoot_api_key and restaurant.chatwoot_base_url:
+                            send_chatwoot_response(restaurant, conversation_id, 
+                                "I couldn't understand the audio message. Please try again or send a text message.")
+                        return jsonify({'status': 'transcription_empty'})
+                else:
+                    print("Could not extract audio URL from payload", flush=True)
+                    if restaurant.chatwoot_api_key and restaurant.chatwoot_base_url:
+                        send_chatwoot_response(restaurant, conversation_id,
+                            "I couldn't process the audio message. Please try again.")
+                    return jsonify({'status': 'audio_url_missing'})
+                    
+            except Exception as audio_error:
+                print(f"Audio transcription failed: {audio_error}", flush=True)
+                import traceback
+                traceback.print_exc()
+                if restaurant.chatwoot_api_key and restaurant.chatwoot_base_url:
+                    send_chatwoot_response(restaurant, conversation_id,
+                        "I had trouble processing your voice message. Please try again or send a text message.")
+                return jsonify({'status': 'transcription_error', 'error': str(audio_error)})
         
         if not content:
             print("SKIPPING: Empty message content", flush=True)
@@ -847,7 +890,8 @@ def handle_chatwoot_message(restaurant, data):
         "content": "message text",  # Content is at root level
         "message_type": 0,  # 0=incoming, 1=outgoing
         "conversation": {"id": 123, "messages": [...]},
-        "sender": {...}
+        "sender": {...},
+        "attachments": [{"file_type": "audio", "data_url": "..."}]
     }
     """
     try:
@@ -859,6 +903,7 @@ def handle_chatwoot_message(restaurant, data):
         message_type = data.get('message_type')
         conversation_data = data.get('conversation', {})
         sender = data.get('sender', {})
+        attachments = data.get('attachments', [])
         
         # If not at root, try getting from conversation.messages[0]
         if not content and conversation_data.get('messages'):
@@ -866,10 +911,12 @@ def handle_chatwoot_message(restaurant, data):
             content = latest_message.get('content', '')
             message_type = latest_message.get('message_type')
             sender = latest_message.get('sender', sender)
+            attachments = latest_message.get('attachments', attachments)
         
         print(f"Content: {content}", flush=True)
         print(f"Message type: {message_type} (type: {type(message_type).__name__})", flush=True)
         print(f"Sender: {sender}", flush=True)
+        print(f"Attachments: {len(attachments)} found", flush=True)
 
         # Chatwoot uses: 0 = incoming, 1 = outgoing, 2 = activity
         # Handle both string and integer message types
@@ -879,6 +926,51 @@ def handle_chatwoot_message(restaurant, data):
         if not is_incoming:
             print(f"IGNORING: Not an incoming message (type: {message_type})", flush=True)
             return jsonify({'status': 'ignored', 'reason': f'Not an incoming message (type: {message_type})'})
+
+        # Check for audio attachments and transcribe if found
+        is_audio = any(att.get('file_type') == 'audio' for att in attachments)
+        if is_audio:
+            print("=== AUDIO MESSAGE DETECTED ===", flush=True)
+            try:
+                from app.services.audio_transcriber import AudioTranscriber, extract_audio_from_payload
+                
+                # Extract audio URL from payload
+                audio_url = extract_audio_from_payload(data)
+                print(f"Audio URL: {audio_url[:100] if audio_url else 'None'}...", flush=True)
+                
+                if audio_url:
+                    # Transcribe the audio
+                    transcriber = AudioTranscriber()
+                    transcribed_text = transcriber.transcribe_from_url(audio_url)
+                    
+                    if transcribed_text:
+                        print(f"Audio transcribed successfully: {transcribed_text[:100]}...", flush=True)
+                        content = transcribed_text  # Use transcribed text as content
+                    else:
+                        print("Audio transcription returned empty text", flush=True)
+                        # Get conversation ID for error response
+                        conversation_id = conversation_data.get('id')
+                        if conversation_id and restaurant.chatwoot_api_key and restaurant.chatwoot_base_url:
+                            send_chatwoot_response(restaurant, conversation_id, 
+                                "I couldn't understand the audio message. Please try again or send a text message.")
+                        return jsonify({'status': 'transcription_empty'})
+                else:
+                    print("Could not extract audio URL from payload", flush=True)
+                    conversation_id = conversation_data.get('id')
+                    if conversation_id and restaurant.chatwoot_api_key and restaurant.chatwoot_base_url:
+                        send_chatwoot_response(restaurant, conversation_id,
+                            "I couldn't process the audio message. Please try again.")
+                    return jsonify({'status': 'audio_url_missing'})
+                    
+            except Exception as audio_error:
+                print(f"Audio transcription failed: {audio_error}", flush=True)
+                import traceback
+                traceback.print_exc()
+                conversation_id = conversation_data.get('id')
+                if conversation_id and restaurant.chatwoot_api_key and restaurant.chatwoot_base_url:
+                    send_chatwoot_response(restaurant, conversation_id,
+                        "I had trouble processing your voice message. Please try again or send a text message.")
+                return jsonify({'status': 'transcription_error', 'error': str(audio_error)})
 
         if not content:
             print("IGNORING: Empty message content", flush=True)
