@@ -849,6 +849,34 @@ Keep responses brief."""
         print(f"Message: {message}", flush=True)
         print(f"Booking so far: date={booking.date}, time={booking.time}, guests={booking.guests}", flush=True)
         
+        # =================================================================
+        # CHECK FOR NEW RESERVATION INTENT - Reset state if user starts over
+        # =================================================================
+        
+        # Keywords that indicate a new reservation request
+        new_reservation_keywords = [
+            'table for', 'book a table', 'make a reservation', 'reserve a table',
+            'i want to book', 'i would like to book', 'i want to make', 'i would like to make',
+            'new reservation', 'start over', 'begin again', 'restart'
+        ]
+        
+        # Check if user is starting a new reservation while in a confirmation state
+        if conv_state.state in [BookingState.AWAITING_FINAL_CONFIRMATION, 
+                                 BookingState.AWAITING_NAME_CONFIRMATION,
+                                 BookingState.AWAITING_SPECIAL_REQUESTS]:
+            is_new_reservation = any(kw in message_lower for kw in new_reservation_keywords)
+            
+            if is_new_reservation:
+                print(f"Detected new reservation intent - resetting state", flush=True)
+                # Reset the state and booking details
+                conv_state.state = BookingState.INITIAL
+                conv_state.booking_details = BookingDetails()
+                conv_state.last_question = None
+                booking = conv_state.booking_details
+                # Clear the saved state
+                if session_id:
+                    clear_conversation_state(self.restaurant_id, session_id, self.app)
+        
         # Retrieve memories for context (if available)
         memory_context = ""
         if self._memory_service and self._memory_service.is_available and sender_phone:
@@ -1015,26 +1043,23 @@ Keep responses brief."""
                 ))
             
             else:
-                # User is providing their name
-                if len(message) >= 2:
-                    booking.customer_name = message.strip()
-                    if conv_state.incoming_customer_phone:
-                        booking.customer_phone = conv_state.incoming_customer_phone
-                        conv_state.state = BookingState.AWAITING_SPECIAL_REQUESTS
-                        conv_state.booking_details = booking
-                        return respond(AssistantResponse(
-                            text="Do you have any special requests?",
-                            buttons=self._get_special_request_buttons(),
-                            button_type='special_requests',
-                            conversation_state=conv_state
-                        ))
-                    else:
-                        conv_state.state = BookingState.AWAITING_PHONE_INPUT
-                        conv_state.booking_details = booking
-                        return respond(AssistantResponse(
-                            text=f"Thanks {booking.customer_name.split()[0]}! What's your phone number?",
-                            conversation_state=conv_state
-                        ))
+                # User said something else - ask for clarification
+                customer_name = conv_state.incoming_customer_name or "your contact"
+                customer_phone = conv_state.incoming_customer_phone or "your phone"
+                
+                # Check if name looks like phone number
+                if is_phone_number_like(customer_name):
+                    customer_name = "(name needed)"
+                
+                return respond(AssistantResponse(
+                    text=f"I have:\n"
+                         f"Name: {customer_name}\n"
+                         f"Phone: {customer_phone}\n\n"
+                         f"Please reply 'Yes' if correct, or 'No' to update.",
+                    buttons=self._get_yes_no_buttons(),
+                    button_type='confirm_contact',
+                    conversation_state=conv_state
+                ))
         
         # --- AWAITING NAME INPUT ---
         if conv_state.state == BookingState.AWAITING_NAME_INPUT:
