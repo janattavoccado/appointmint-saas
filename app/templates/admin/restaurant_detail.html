@@ -16,7 +16,7 @@
     </div>
     <div class="d-flex gap-2">
         <a href="{{ url_for('admin.chatwoot_settings', id=restaurant.id) }}" class="btn btn-outline-success">
-            <i class="fas fa-comments me-2"></i>Chatwoot
+            <i class="fas fa-comments me-2"></i>Chatwoot Webhook
         </a>
         <a href="{{ url_for('admin.knowledge_base', id=restaurant.id) }}" class="btn btn-outline-info">
             <i class="fas fa-book me-2"></i>Knowledge Base
@@ -119,7 +119,7 @@
             </div>
         </div>
     </div>
-    
+
     <!-- Restaurant Info -->
     <div class="col-lg-5">
         <div class="card mb-4">
@@ -151,7 +151,7 @@
                 </div>
             </div>
         </div>
-        
+
         <!-- Tables -->
         <div class="card">
             <div class="card-header d-flex justify-content-between align-items-center">
@@ -520,15 +520,15 @@ document.addEventListener('DOMContentLoaded', function() {
     const chatInput = document.getElementById('chatInput');
     const sendBtn = document.getElementById('sendBtn');
     const voiceBtn = document.getElementById('voiceBtn');
-    
+
     // Conversation history with state tracking
     let conversationHistory = [];
     let currentConversationState = null;  // Stores the Pydantic state from backend
-    
+
     let isRecording = false;
     let mediaRecorder = null;
     let audioChunks = [];
-    
+
     /**
      * Parse the API response which may be:
      * 1. A JSON string containing {text, buttons, button_type, conversation_state}
@@ -539,7 +539,7 @@ document.addEventListener('DOMContentLoaded', function() {
         console.log('=== PARSING RESPONSE ===');
         console.log('Response type:', typeof response);
         console.log('Response value:', response);
-        
+
         // If response is already an object with 'text' property, use it directly
         if (response && typeof response === 'object' && response.text) {
             console.log('Response is already a parsed object with text');
@@ -550,7 +550,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 conversationState: response.conversation_state || null
             };
         }
-        
+
         // If response is a string, try to parse it as JSON
         if (typeof response === 'string') {
             // First, check if it looks like JSON
@@ -573,7 +573,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 }
             }
         }
-        
+
         // Fallback: treat as plain text
         console.log('Using response as plain text');
         return {
@@ -583,21 +583,21 @@ document.addEventListener('DOMContentLoaded', function() {
             conversationState: null
         };
     }
-    
+
     // Send message
     function sendMessage(messageOverride = null) {
         const message = messageOverride || chatInput.value.trim();
         if (!message) return;
-        
+
         addMessage(message, 'user');
         if (!messageOverride) {
             chatInput.value = '';
         }
-        
+
         // Build conversation history entry with state
         const historyEntry = { role: 'user', content: message };
         conversationHistory.push(historyEntry);
-        
+
         // Show typing indicator
         const typingDiv = document.createElement('div');
         typingDiv.className = 'message assistant typing';
@@ -611,17 +611,17 @@ document.addEventListener('DOMContentLoaded', function() {
         `;
         chatMessages.appendChild(typingDiv);
         chatMessages.scrollTop = chatMessages.scrollHeight;
-        
+
         // Build request with conversation state
         const requestBody = {
             restaurant_id: {{ restaurant.id }},
             message: message,
             conversation_history: conversationHistory
         };
-        
+
         console.log('=== SENDING REQUEST ===');
         console.log('Request body:', requestBody);
-        
+
         // Send to API
         fetch('/api/ai/chat', {
             method: 'POST',
@@ -639,29 +639,29 @@ document.addEventListener('DOMContentLoaded', function() {
             console.log('data.success:', data.success);
             console.log('data.response:', data.response);
             console.log('data.response type:', typeof data.response);
-            
+
             // Remove typing indicator
             typingDiv.remove();
-            
+
             if (data.success) {
                 // Parse the response using our robust parser
                 const parsed = parseResponse(data.response);
-                
+
                 console.log('=== PARSED RESULT ===');
                 console.log('Text:', parsed.text);
                 console.log('Buttons:', parsed.buttons);
                 console.log('Button type:', parsed.buttonType);
-                
+
                 // Store the conversation state for next request
                 if (parsed.conversationState) {
                     currentConversationState = parsed.conversationState;
                 }
-                
+
                 addMessage(parsed.text, 'assistant', parsed.buttons, parsed.buttonType);
-                
+
                 // Add to history with state
-                conversationHistory.push({ 
-                    role: 'assistant', 
+                conversationHistory.push({
+                    role: 'assistant',
                     content: parsed.text,
                     conversation_state: parsed.conversationState
                 });
@@ -677,20 +677,20 @@ document.addEventListener('DOMContentLoaded', function() {
             addMessage('Sorry, I encountered an error. Please try again.', 'assistant');
         });
     }
-    
+
     function addMessage(text, sender, buttons = null, buttonType = null) {
         console.log('=== ADD MESSAGE ===');
         console.log('Text:', text);
         console.log('Sender:', sender);
         console.log('Buttons:', buttons);
         console.log('Button type:', buttonType);
-        
+
         const messageDiv = document.createElement('div');
         messageDiv.className = `message ${sender}`;
-        
+
         // Format text with line breaks
         const formattedText = text.replace(/\n/g, '<br>');
-        
+
         let contentHtml = `
             <div class="message-avatar">
                 <i class="fas fa-${sender === 'user' ? 'user' : 'robot'}"></i>
@@ -698,29 +698,29 @@ document.addEventListener('DOMContentLoaded', function() {
             <div class="message-content">
                 <div class="message-text">${formattedText}</div>
         `;
-        
+
         // Add buttons if present
         if (buttons && Array.isArray(buttons) && buttons.length > 0) {
             console.log('=== RENDERING BUTTONS ===');
             console.log('Number of buttons:', buttons.length);
-            
+
             contentHtml += '<div class="chat-buttons">';
             buttons.forEach((btn, index) => {
                 console.log(`Button ${index}:`, btn);
                 let btnClass = 'chat-btn';
                 if (btn.value === 'confirm') btnClass += ' confirm';
                 if (btn.value === 'cancel') btnClass += ' cancel';
-                
+
                 contentHtml += `<button class="${btnClass}" data-value="${btn.value}" data-display="${btn.display}" data-type="${buttonType || ''}">${btn.display}</button>`;
             });
             contentHtml += '</div>';
         }
-        
+
         contentHtml += '</div>';
         messageDiv.innerHTML = contentHtml;
         chatMessages.appendChild(messageDiv);
         chatMessages.scrollTop = chatMessages.scrollHeight;
-        
+
         // Add click handlers for buttons
         if (buttons && Array.isArray(buttons) && buttons.length > 0) {
             const buttonElements = messageDiv.querySelectorAll('.chat-btn');
@@ -734,13 +734,13 @@ document.addEventListener('DOMContentLoaded', function() {
             });
         }
     }
-    
+
     function handleButtonClick(value, display, type, buttonElement) {
         console.log('=== BUTTON CLICK ===');
         console.log('Value:', value);
         console.log('Display:', display);
         console.log('Type:', type);
-        
+
         // Disable all buttons in this group
         const buttonContainer = buttonElement.parentElement;
         const allButtons = buttonContainer.querySelectorAll('.chat-btn');
@@ -750,10 +750,10 @@ document.addEventListener('DOMContentLoaded', function() {
                 btn.classList.add('selected');
             }
         });
-        
+
         // Determine what message to send based on button type
         let messageToSend = value;  // Default: send the value
-        
+
         switch (type) {
             case 'date':
                 // For dates, send the YYYY-MM-DD value directly
@@ -770,13 +770,13 @@ document.addEventListener('DOMContentLoaded', function() {
             default:
                 messageToSend = value;
         }
-        
+
         // Show the display text as user message but send the value
         addMessage(display, 'user');
-        
+
         // Add to history
         conversationHistory.push({ role: 'user', content: messageToSend });
-        
+
         // Show typing indicator
         const typingDiv = document.createElement('div');
         typingDiv.className = 'message assistant typing';
@@ -790,7 +790,7 @@ document.addEventListener('DOMContentLoaded', function() {
         `;
         chatMessages.appendChild(typingDiv);
         chatMessages.scrollTop = chatMessages.scrollHeight;
-        
+
         // Send to API
         fetch('/api/ai/chat', {
             method: 'POST',
@@ -804,18 +804,18 @@ document.addEventListener('DOMContentLoaded', function() {
         .then(response => response.json())
         .then(data => {
             typingDiv.remove();
-            
+
             if (data.success) {
                 // Parse the response using our robust parser
                 const parsed = parseResponse(data.response);
-                
+
                 if (parsed.conversationState) {
                     currentConversationState = parsed.conversationState;
                 }
-                
+
                 addMessage(parsed.text, 'assistant', parsed.buttons, parsed.buttonType);
-                conversationHistory.push({ 
-                    role: 'assistant', 
+                conversationHistory.push({
+                    role: 'assistant',
                     content: parsed.text,
                     conversation_state: parsed.conversationState
                 });
@@ -829,13 +829,13 @@ document.addEventListener('DOMContentLoaded', function() {
             addMessage('Sorry, I encountered an error. Please try again.', 'assistant');
         });
     }
-    
+
     // Event listeners
     sendBtn.addEventListener('click', function() { sendMessage(); });
     chatInput.addEventListener('keypress', function(e) {
         if (e.key === 'Enter') sendMessage();
     });
-    
+
     // Voice recording
     voiceBtn.addEventListener('click', async function() {
         if (!isRecording) {
@@ -843,7 +843,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
                 mediaRecorder = new MediaRecorder(stream);
                 audioChunks = [];
-                
+
                 mediaRecorder.ondataavailable = (e) => audioChunks.push(e.data);
                 mediaRecorder.onstop = async () => {
                     const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
@@ -851,46 +851,46 @@ document.addEventListener('DOMContentLoaded', function() {
                     formData.append('audio', audioBlob);
                     formData.append('restaurant_id', {{ restaurant.id }});
                     formData.append('conversation_history', JSON.stringify(conversationHistory));
-                    
+
                     addMessage('🎤 Processing voice...', 'user');
-                    
+
                     try {
                         const response = await fetch('/api/ai/voice-chat', {
                             method: 'POST',
                             body: formData
                         });
                         const data = await response.json();
-                        
+
                         console.log('=== VOICE CHAT RESPONSE ===');
                         console.log('Full data:', data);
                         console.log('user_text:', data.user_text);
                         console.log('ai_response:', data.ai_response);
                         console.log('ai_response type:', typeof data.ai_response);
-                        
+
                         chatMessages.lastChild.remove();
-                        
+
                         if (data.success) {
                             // Show the transcribed user message
                             addMessage(data.user_text, 'user');
                             conversationHistory.push({ role: 'user', content: data.user_text });
-                            
+
                             // Parse the AI response using our robust parser (same as text chat)
                             const parsed = parseResponse(data.ai_response);
-                            
+
                             console.log('=== VOICE PARSED RESULT ===');
                             console.log('Text:', parsed.text);
                             console.log('Buttons:', parsed.buttons);
                             console.log('Button type:', parsed.buttonType);
-                            
+
                             // Store conversation state
                             if (parsed.conversationState) {
                                 currentConversationState = parsed.conversationState;
                             }
-                            
+
                             // Add the AI response with buttons
                             addMessage(parsed.text, 'assistant', parsed.buttons, parsed.buttonType);
-                            conversationHistory.push({ 
-                                role: 'assistant', 
+                            conversationHistory.push({
+                                role: 'assistant',
                                 content: parsed.text,
                                 conversation_state: parsed.conversationState
                             });
@@ -902,10 +902,10 @@ document.addEventListener('DOMContentLoaded', function() {
                         chatMessages.lastChild.remove();
                         addMessage('Sorry, voice processing failed.', 'assistant');
                     }
-                    
+
                     stream.getTracks().forEach(track => track.stop());
                 };
-                
+
                 mediaRecorder.start();
                 isRecording = true;
                 voiceBtn.classList.add('recording');
