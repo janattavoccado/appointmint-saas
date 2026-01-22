@@ -479,41 +479,62 @@ class ReservationAssistant:
                 )
                 return response.model_dump_json()
         
-        # Initial state or reservation intent detected
-        if conv_state.state == BookingState.INITIAL or 'reserv' in message_lower or 'book' in message_lower or 'table' in message_lower:
-            conv_state.state = BookingState.AWAITING_DATE
-            conv_state.booking_details = BookingDetails()  # Reset booking details
+        # FIRST: Check if this is a question that can be answered from knowledge base or general inquiry
+        # This should be checked BEFORE triggering the reservation flow
+        if conv_state.state == BookingState.INITIAL:
+            knowledge_base = self._restaurant_info.get('knowledge_base', '')
             
-            response = AssistantResponse(
-                text="Great! Please select a date for your reservation:",
-                buttons=self._get_next_5_dates(),
-                button_type='date',
-                conversation_state=conv_state
-            )
-            return response.model_dump_json()
-        
-        # Check if this is a question that can be answered from knowledge base
-        knowledge_base = self._restaurant_info.get('knowledge_base', '')
-        if knowledge_base and conv_state.state == BookingState.INITIAL:
             # Check for common question keywords
             question_keywords = ['menu', 'hour', 'open', 'close', 'location', 'address', 'park', 
                                'vegetarian', 'vegan', 'gluten', 'allerg', 'price', 'cost',
                                'dress', 'code', 'private', 'event', 'catering', 'takeout',
                                'delivery', 'outdoor', 'patio', 'wheelchair', 'accessible',
                                'happy hour', 'special', 'wine', 'drink', 'dessert', 'appetizer',
-                               'what do you', 'do you have', 'can i', 'is there', 'where']
+                               'what do you', 'do you have', 'can i', 'is there', 'where',
+                               'time', 'when', 'how', 'what', 'why', 'who', 'which', 'tell me',
+                               'info', 'about', 'contact', 'phone', 'email', 'website']
             
             is_question = any(kw in message_lower for kw in question_keywords) or '?' in message
             
-            if is_question:
-                # Use OpenAI to answer from knowledge base
-                answer = self._answer_from_knowledge_base(message, knowledge_base)
-                if answer:
-                    response = AssistantResponse(
-                        text=answer,
-                        conversation_state=conv_state
-                    )
-                    return response.model_dump_json()
+            # Check for explicit reservation intent
+            reservation_keywords = ['reserv', 'book', 'table for', 'make a booking', 'get a table']
+            is_reservation_request = any(kw in message_lower for kw in reservation_keywords)
+            
+            # If it's a question and NOT a reservation request, try to answer it
+            if is_question and not is_reservation_request:
+                if knowledge_base:
+                    # Use OpenAI to answer from knowledge base
+                    answer = self._answer_from_knowledge_base(message, knowledge_base)
+                    if answer:
+                        response = AssistantResponse(
+                            text=answer,
+                            conversation_state=conv_state
+                        )
+                        return response.model_dump_json()
+                else:
+                    # No knowledge base, use OpenAI for general response
+                    answer = self._answer_general_question(message)
+                    if answer:
+                        response = AssistantResponse(
+                            text=answer,
+                            conversation_state=conv_state
+                        )
+                        return response.model_dump_json()
+        
+        # SECOND: Check for reservation intent (only if not already in a booking flow)
+        if conv_state.state == BookingState.INITIAL:
+            reservation_keywords = ['reserv', 'book', 'table', 'booking']
+            if any(kw in message_lower for kw in reservation_keywords):
+                conv_state.state = BookingState.AWAITING_DATE
+                conv_state.booking_details = BookingDetails()  # Reset booking details
+                
+                response = AssistantResponse(
+                    text="Great! Please select a date for your reservation:",
+                    buttons=self._get_next_5_dates(),
+                    button_type='date',
+                    conversation_state=conv_state
+                )
+                return response.model_dump_json()
         
         # Default response for other queries
         response = AssistantResponse(
@@ -523,6 +544,45 @@ class ReservationAssistant:
             conversation_state=conv_state
         )
         return response.model_dump_json()
+    
+    def _answer_general_question(self, question: str) -> Optional[str]:
+        """
+        Use OpenAI to answer a general question when no knowledge base is available.
+        """
+        restaurant_name = self._restaurant_info.get('name', 'our restaurant')
+        restaurant_address = self._restaurant_info.get('address', '')
+        restaurant_city = self._restaurant_info.get('city', '')
+        restaurant_phone = self._restaurant_info.get('phone', '')
+        
+        try:
+            system_prompt = f"""You are a helpful assistant for {restaurant_name}.
+You can help with general questions and making reservations.
+
+Restaurant Info:
+- Name: {restaurant_name}
+- Address: {restaurant_address}, {restaurant_city}
+- Phone: {restaurant_phone}
+
+For questions you don't know the answer to, politely say you don't have that specific information
+and offer to help with making a reservation instead.
+
+Keep answers concise and friendly. Do not make up specific information like hours or menu items."""
+            
+            response = self._client.chat.completions.create(
+                model="gpt-4.1-nano",
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": question}
+                ],
+                max_tokens=300,
+                temperature=0.7
+            )
+            
+            answer = response.choices[0].message.content.strip()
+            return answer
+            
+        except Exception as e:
+            return None
     
     def _answer_from_knowledge_base(self, question: str, knowledge_base: str) -> Optional[str]:
         """
