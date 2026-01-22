@@ -1122,7 +1122,21 @@ Keep responses brief."""
         
         # --- AWAITING FINAL CONFIRMATION ---
         if conv_state.state == BookingState.AWAITING_FINAL_CONFIRMATION:
-            if message_lower in ['confirm', 'yes', 'y', 'book', 'si', 'ja']:
+            # Check for confirmation - be flexible with matching
+            confirm_words = ['confirm', 'yes', 'y', 'book', 'si', 'ja', 'ok', 'okay', 'sure', 'absolutely', 'definitely', 'great', 'perfect']
+            cancel_words = ['cancel', 'no', 'n', 'stop', 'nevermind', 'never mind', 'abort']
+            
+            # Check if message starts with or contains confirmation words
+            is_confirmation = any(
+                message_lower == word or 
+                message_lower.startswith(word + ' ') or 
+                message_lower.startswith(word + ',') or
+                message_lower.startswith(word + '!')
+                for word in confirm_words
+            )
+            is_cancellation = any(word in message_lower for word in cancel_words)
+            
+            if is_confirmation and not is_cancellation:
                 result = self._make_reservation(booking)
                 
                 if result['success']:
@@ -1184,7 +1198,7 @@ Keep responses brief."""
                         conversation_state=conv_state
                     ))
             
-            elif message_lower in ['cancel', 'no', 'n']:
+            elif is_cancellation:
                 conv_state.state = BookingState.INITIAL
                 conv_state.booking_details = BookingDetails()
                 # Clear state on cancellation
@@ -1192,6 +1206,26 @@ Keep responses brief."""
                     clear_conversation_state(self.restaurant_id, session_id, self.app)
                 return respond(AssistantResponse(
                     text="Reservation cancelled. How else can I help?",
+                    conversation_state=conv_state
+                ))
+            
+            else:
+                # User said something else - ask for clarification
+                summary = (
+                    f"Your reservation:\n\n"
+                    f"📅 {booking.date_display or booking.date}\n"
+                    f"🕐 {booking.time_display or booking.time}\n"
+                    f"👥 {booking.guests} guests\n"
+                    f"📛 {booking.customer_name}\n"
+                )
+                if booking.special_requests:
+                    summary += f"📝 {booking.special_requests}\n"
+                summary += f"\nPlease reply 'Yes' to confirm or 'No' to cancel."
+                
+                return respond(AssistantResponse(
+                    text=summary,
+                    buttons=self._get_confirm_buttons(),
+                    button_type='final_confirm',
                     conversation_state=conv_state
                 ))
         
