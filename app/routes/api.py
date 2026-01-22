@@ -682,6 +682,7 @@ def staff_update_status():
 
 @api_bp.route('/webhook/chatwoot/<webhook_token>', methods=['POST'])
 def chatwoot_webhook(webhook_token):
+    print(f"=== WEBHOOK HIT === Token: {webhook_token}")  # ADD THIS LINE
     """
     Chatwoot webhook endpoint for receiving messages and sending AI responses.
 
