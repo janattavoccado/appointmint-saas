@@ -28,6 +28,14 @@ from openai import OpenAI
 
 from app.models import db, Restaurant, Table, Reservation, AIConversation, Tenant
 
+# Import memory service
+try:
+    from app.services.memory_service import get_memory_service, format_memories_for_context
+    MEMORY_AVAILABLE = True
+except ImportError:
+    MEMORY_AVAILABLE = False
+    print("WARNING: Memory service not available", flush=True)
+
 
 # =============================================================================
 # PYDANTIC MODELS FOR STRUCTURED DATA
@@ -401,6 +409,15 @@ class ReservationAssistant:
         self._timezone = 'UTC'
         self._client = OpenAI()
         self._customer_info = customer_info or {}
+        
+        # Initialize memory service
+        self._memory_service = None
+        if MEMORY_AVAILABLE:
+            try:
+                self._memory_service = get_memory_service()
+                print(f"Memory service initialized: {self._memory_service.is_available}", flush=True)
+            except Exception as e:
+                print(f"Failed to initialize memory service: {e}", flush=True)
     
     def _get_restaurant_info(self) -> Dict[str, Any]:
         """Get restaurant information from database"""
@@ -832,10 +849,49 @@ Keep responses brief."""
         print(f"Message: {message}", flush=True)
         print(f"Booking so far: date={booking.date}, time={booking.time}, guests={booking.guests}", flush=True)
         
+        # Retrieve memories for context (if available)
+        memory_context = ""
+        if self._memory_service and self._memory_service.is_available and sender_phone:
+            try:
+                # Get relevant memories for this customer
+                memories = self._memory_service.search_memories(
+                    query=message,
+                    phone=sender_phone,
+                    restaurant_id=self.restaurant_id,
+                    limit=5
+                )
+                if memories:
+                    memory_context = format_memories_for_context(memories)
+                    print(f"Retrieved {len(memories)} memories for context", flush=True)
+                
+                # Also get customer context (name, preferences, etc.)
+                customer_context = self._memory_service.get_customer_context(
+                    phone=sender_phone,
+                    restaurant_id=self.restaurant_id
+                )
+                if customer_context.customer_name and not conv_state.incoming_customer_name:
+                    conv_state.incoming_customer_name = customer_context.customer_name
+                    print(f"Retrieved customer name from memory: {customer_context.customer_name}", flush=True)
+            except Exception as e:
+                print(f"Error retrieving memories: {e}", flush=True)
+        
         # Helper function to save state and return response
         def respond(response: AssistantResponse) -> str:
             if session_id:
                 save_conversation_state(self.restaurant_id, session_id, response.conversation_state, self.app)
+            
+            # Store conversation in memory (async-safe)
+            if self._memory_service and self._memory_service.is_available and sender_phone:
+                try:
+                    self._memory_service.add_conversation_memory(
+                        user_message=message,
+                        assistant_response=response.text,
+                        phone=sender_phone,
+                        restaurant_id=self.restaurant_id
+                    )
+                except Exception as e:
+                    print(f"Error storing memory: {e}", flush=True)
+            
             return response.model_dump_json()
         
         # =================================================================
@@ -894,7 +950,11 @@ Keep responses brief."""
                     customer_name = conv_state.incoming_customer_name
                     customer_phone = conv_state.incoming_customer_phone
                     
-                    if customer_name and customer_phone:
+                    # Check if the name looks like a phone number (common Chatwoot issue)
+                    name_is_valid = customer_name and not is_phone_number_like(customer_name)
+                    
+                    if name_is_valid and customer_phone:
+                        # We have a valid name and phone - ask for confirmation
                         booking.customer_name = customer_name
                         booking.customer_phone = customer_phone
                         conv_state.state = BookingState.AWAITING_NAME_CONFIRMATION
@@ -913,6 +973,10 @@ Keep responses brief."""
                             conversation_state=conv_state
                         ))
                     else:
+                        # Name is missing or looks like a phone number - ask for name
+                        # Store the phone for later use
+                        if customer_phone:
+                            booking.customer_phone = customer_phone
                         conv_state.state = BookingState.AWAITING_NAME_INPUT
                         conv_state.booking_details = booking
                         return respond(AssistantResponse(
@@ -1066,6 +1130,45 @@ Keep responses brief."""
                     # Clear state after successful booking
                     if session_id:
                         clear_conversation_state(self.restaurant_id, session_id, self.app)
+                    
+                    # Store reservation in memory for future reference
+                    if self._memory_service and self._memory_service.is_available and sender_phone:
+                        try:
+                            self._memory_service.add_reservation_memory(
+                                phone=sender_phone,
+                                restaurant_id=self.restaurant_id,
+                                reservation_details={
+                                    'date': booking.date,
+                                    'date_display': booking.date_display,
+                                    'time': booking.time,
+                                    'time_display': booking.time_display,
+                                    'guests': booking.guests,
+                                    'customer_name': booking.customer_name,
+                                    'special_requests': booking.special_requests,
+                                    'reservation_id': result['reservation_id'],
+                                    'table_name': result['table_name']
+                                }
+                            )
+                            # Also store customer name for future lookups
+                            if booking.customer_name:
+                                self._memory_service.add_preference(
+                                    phone=sender_phone,
+                                    restaurant_id=self.restaurant_id,
+                                    preference=f"Customer name is {booking.customer_name}",
+                                    category="identity"
+                                )
+                            # Store special requests as preferences
+                            if booking.special_requests:
+                                self._memory_service.add_preference(
+                                    phone=sender_phone,
+                                    restaurant_id=self.restaurant_id,
+                                    preference=booking.special_requests,
+                                    category="seating"
+                                )
+                            print(f"Stored reservation in memory for {sender_phone}", flush=True)
+                        except Exception as e:
+                            print(f"Error storing reservation in memory: {e}", flush=True)
+                    
                     return respond(AssistantResponse(
                         text=f"Confirmed!\n\n"
                              f"Date: {booking.date_display or booking.date} at {booking.time_display or booking.time}\n"
@@ -1183,7 +1286,11 @@ Keep responses brief."""
                     customer_name = conv_state.incoming_customer_name
                     customer_phone = conv_state.incoming_customer_phone
                     
-                    if customer_name and customer_phone:
+                    # Check if the name looks like a phone number (common Chatwoot issue)
+                    name_is_valid = customer_name and not is_phone_number_like(customer_name)
+                    
+                    if name_is_valid and customer_phone:
+                        # We have a valid name and phone - ask for confirmation
                         booking.customer_name = customer_name
                         booking.customer_phone = customer_phone
                         conv_state.state = BookingState.AWAITING_NAME_CONFIRMATION
@@ -1202,6 +1309,10 @@ Keep responses brief."""
                             conversation_state=conv_state
                         ))
                     else:
+                        # Name is missing or looks like a phone number - ask for name
+                        # Store the phone for later use
+                        if customer_phone:
+                            booking.customer_phone = customer_phone
                         conv_state.state = BookingState.AWAITING_NAME_INPUT
                         conv_state.booking_details = booking
                         return respond(AssistantResponse(
