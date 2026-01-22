@@ -1,0 +1,65 @@
+{% extends "admin/base.html" %}
+
+{% block title %}Edit Organization{% endblock %}
+
+{% block admin_content %}
+<div class="admin-header">
+    <h1>Edit Organization</h1>
+</div>
+
+<div class="form-card">
+    <form method="POST" action="">
+        <div class="form-group">
+            <label for="name">Company Name *</label>
+            <input type="text" id="name" name="name" class="form-control" 
+                   value="{{ tenant.name }}" required>
+        </div>
+        
+        <div class="form-row">
+            <div class="form-group">
+                <label for="email">Email Address *</label>
+                <input type="email" id="email" name="email" class="form-control" 
+                       value="{{ tenant.email }}" required>
+            </div>
+            <div class="form-group">
+                <label for="phone">Phone Number</label>
+                <input type="tel" id="phone" name="phone" class="form-control" 
+                       value="{{ tenant.phone or '' }}">
+            </div>
+        </div>
+        
+        <div class="form-info">
+            <h4>Subscription Information</h4>
+            <p><strong>Current Plan:</strong> {{ tenant.subscription_plan|capitalize }}</p>
+            <p><strong>Status:</strong> {{ tenant.subscription_status|capitalize }}</p>
+            <p class="form-text">To change your subscription plan, please contact support.</p>
+        </div>
+        
+        <div class="form-actions">
+            <button type="submit" class="btn btn-primary">Save Changes</button>
+            <a href="{{ url_for('admin.my_organization') }}" class="btn btn-secondary">Cancel</a>
+        </div>
+    </form>
+</div>
+
+<style>
+.form-info {
+    background: #f8fafc;
+    border-radius: 0.5rem;
+    padding: 1.5rem;
+    margin-bottom: 1.5rem;
+}
+
+.form-info h4 {
+    font-size: 1rem;
+    font-weight: 600;
+    color: #1e293b;
+    margin-bottom: 0.75rem;
+}
+
+.form-info p {
+    margin: 0.5rem 0;
+    color: #475569;
+}
+</style>
+{% endblock %}

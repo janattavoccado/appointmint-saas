@@ -1,0 +1,260 @@
+{% extends "admin/base.html" %}
+
+{% block title %}My Organization - AppointMint{% endblock %}
+
+{% block admin_content %}
+<div class="page-header">
+    <div>
+        <h1 class="page-title">My Organization</h1>
+        <p class="page-subtitle">View your organization details</p>
+    </div>
+    {% if current_user.is_tenant_superuser() %}
+    <a href="{{ url_for('admin.edit_my_organization') }}" class="btn btn-primary">
+        <i class="fas fa-edit me-2"></i>Edit Organization
+    </a>
+    {% endif %}
+</div>
+
+<div class="row g-4">
+    <!-- Organization Info -->
+    <div class="col-lg-8">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="card-title mb-0">Organization Details</h5>
+            </div>
+            <div class="card-body">
+                <div class="row g-4">
+                    <div class="col-md-6">
+                        <label class="form-label text-muted small">Organization Name</label>
+                        <p class="fw-semibold mb-0">{{ tenant.name }}</p>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label text-muted small">Contact Email</label>
+                        <p class="fw-semibold mb-0">{{ tenant.email or '-' }}</p>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label text-muted small">Contact Phone</label>
+                        <p class="fw-semibold mb-0">{{ tenant.phone or '-' }}</p>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label text-muted small">Status</label>
+                        <p class="mb-0">
+                            <span class="status-badge status-{{ tenant.subscription_status }}">
+                                {{ tenant.subscription_status|capitalize }}
+                            </span>
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Subscription Info -->
+        <div class="card mt-4">
+            <div class="card-header">
+                <h5 class="card-title mb-0">Subscription</h5>
+            </div>
+            <div class="card-body">
+                <div class="row g-4">
+                    <div class="col-md-4">
+                        <div class="subscription-card">
+                            <div class="subscription-icon">
+                                <i class="fas fa-crown"></i>
+                            </div>
+                            <h6>Current Plan</h6>
+                            <p class="fw-bold text-primary mb-0">{{ tenant.subscription_plan|replace('_', ' ')|title }}</p>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="subscription-card">
+                            <div class="subscription-icon" style="background: linear-gradient(135deg, #4CAF50, #66BB6A);">
+                                <i class="fas fa-check-circle"></i>
+                            </div>
+                            <h6>Status</h6>
+                            <p class="fw-bold mb-0">{{ tenant.subscription_status|capitalize }}</p>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="subscription-card">
+                            <div class="subscription-icon" style="background: linear-gradient(135deg, #FF9800, #FFB74D);">
+                                <i class="fas fa-calendar"></i>
+                            </div>
+                            <h6>Member Since</h6>
+                            <p class="fw-bold mb-0">{{ tenant.created_at.strftime('%B %Y') }}</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Stats Sidebar -->
+    <div class="col-lg-4">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="card-title mb-0">Quick Stats</h5>
+            </div>
+            <div class="card-body">
+                <div class="stat-item">
+                    <div class="stat-item-icon" style="background: linear-gradient(135deg, #4CAF50, #66BB6A);">
+                        <i class="fas fa-utensils"></i>
+                    </div>
+                    <div class="stat-item-content">
+                        <div class="stat-item-value">{{ tenant.restaurants|length }}</div>
+                        <div class="stat-item-label">Restaurants</div>
+                    </div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-item-icon" style="background: linear-gradient(135deg, #2196F3, #42A5F5);">
+                        <i class="fas fa-users"></i>
+                    </div>
+                    <div class="stat-item-content">
+                        <div class="stat-item-value">{{ tenant.users|length }}</div>
+                        <div class="stat-item-label">Team Members</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="card mt-4">
+            <div class="card-header">
+                <h5 class="card-title mb-0">Quick Actions</h5>
+            </div>
+            <div class="card-body p-0">
+                <a href="{{ url_for('admin.restaurants') }}" class="quick-action-link">
+                    <i class="fas fa-utensils"></i>
+                    <span>Manage Restaurants</span>
+                    <i class="fas fa-chevron-right ms-auto"></i>
+                </a>
+                <a href="{{ url_for('admin.users') }}" class="quick-action-link">
+                    <i class="fas fa-users"></i>
+                    <span>Manage Team</span>
+                    <i class="fas fa-chevron-right ms-auto"></i>
+                </a>
+                <a href="{{ url_for('admin.reservations') }}" class="quick-action-link">
+                    <i class="fas fa-calendar-alt"></i>
+                    <span>View Reservations</span>
+                    <i class="fas fa-chevron-right ms-auto"></i>
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+.status-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.25rem 0.75rem;
+    border-radius: 20px;
+    font-size: 0.75rem;
+    font-weight: 500;
+}
+
+.status-active {
+    background: #dcfce7;
+    color: #166534;
+}
+
+.status-inactive {
+    background: #fee2e2;
+    color: #991b1b;
+}
+
+.status-suspended {
+    background: #fef3c7;
+    color: #92400e;
+}
+
+.subscription-card {
+    text-align: center;
+    padding: 1.5rem;
+    background: #f8fafc;
+    border-radius: 12px;
+}
+
+.subscription-icon {
+    width: 48px;
+    height: 48px;
+    background: linear-gradient(135deg, #2196F3, #42A5F5);
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 0 auto 1rem;
+    color: white;
+    font-size: 1.25rem;
+}
+
+.subscription-card h6 {
+    color: #64748b;
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-bottom: 0.5rem;
+}
+
+.stat-item {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    padding: 1rem 0;
+    border-bottom: 1px solid #f1f5f9;
+}
+
+.stat-item:last-child {
+    border-bottom: none;
+}
+
+.stat-item-icon {
+    width: 48px;
+    height: 48px;
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    font-size: 1.25rem;
+}
+
+.stat-item-value {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: #1e293b;
+}
+
+.stat-item-label {
+    font-size: 0.75rem;
+    color: #64748b;
+}
+
+.quick-action-link {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 1rem 1.25rem;
+    color: #334155;
+    text-decoration: none;
+    border-bottom: 1px solid #f1f5f9;
+    transition: background 0.2s;
+}
+
+.quick-action-link:last-child {
+    border-bottom: none;
+}
+
+.quick-action-link:hover {
+    background: #f8fafc;
+    color: #4CAF50;
+}
+
+.quick-action-link i:first-child {
+    width: 20px;
+    text-align: center;
+    color: #94a3b8;
+}
+
+.quick-action-link:hover i:first-child {
+    color: #4CAF50;
+}
+</style>
+{% endblock %}

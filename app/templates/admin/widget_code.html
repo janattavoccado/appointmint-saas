@@ -1,0 +1,442 @@
+{% extends "admin/base.html" %}
+
+{% block title %}Widget Code - {{ restaurant.name }} - AppointMint{% endblock %}
+
+{% block admin_content %}
+<div class="page-header">
+    <div>
+        <nav aria-label="breadcrumb">
+            <ol class="breadcrumb mb-2">
+                <li class="breadcrumb-item"><a href="{{ url_for('admin.restaurants') }}">Restaurants</a></li>
+                <li class="breadcrumb-item"><a href="{{ url_for('admin.restaurant_detail', id=restaurant.id) }}">{{ restaurant.name }}</a></li>
+                <li class="breadcrumb-item active">Widget Code</li>
+            </ol>
+        </nav>
+        <h1 class="page-title">Widget Embed Code</h1>
+        <p class="page-subtitle">Get the embed code to add the AI reservation assistant to your website</p>
+    </div>
+</div>
+
+<div class="row g-4">
+    <!-- Embed Code -->
+    <div class="col-lg-7">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="card-title"><i class="fas fa-code me-2"></i>Embed Code</h5>
+            </div>
+            <div class="card-body">
+                <p class="text-muted mb-3">Copy and paste this code into your website, just before the closing <code>&lt;/body&gt;</code> tag.</p>
+                
+                <div class="code-block">
+                    <pre id="embedCode">&lt;!-- AppointMint Reservation Widget for {{ restaurant.name }} --&gt;
+&lt;div id="appointmint-widget" data-restaurant-id="{{ restaurant.id }}"&gt;&lt;/div&gt;
+&lt;script src="{{ base_url }}/static/js/widget.js"&gt;&lt;/script&gt;
+&lt;link rel="stylesheet" href="{{ base_url }}/static/css/widget.css"&gt;
+&lt;script&gt;
+  AppointMintWidget.init({
+    restaurantId: {{ restaurant.id }},
+    apiUrl: '{{ base_url }}/api',
+    theme: {
+      primaryColor: '<span id="colorValue">#4CAF50</span>',
+      position: '<span id="positionValue">bottom-right</span>'
+    }
+  });
+&lt;/script&gt;</pre>
+                    <button class="copy-btn" onclick="copyCode()">
+                        <i class="fas fa-copy me-2"></i>Copy Code
+                    </button>
+                </div>
+                
+                <div class="alert alert-success mt-3" id="copyAlert" style="display: none;">
+                    <i class="fas fa-check me-2"></i>Code copied to clipboard!
+                </div>
+            </div>
+        </div>
+        
+        <!-- Customization -->
+        <div class="card mt-4">
+            <div class="card-header">
+                <h5 class="card-title"><i class="fas fa-palette me-2"></i>Customization Options</h5>
+            </div>
+            <div class="card-body">
+                <div class="row g-4">
+                    <div class="col-md-6">
+                        <label class="form-label">Primary Color</label>
+                        <div class="d-flex gap-2 align-items-center">
+                            <input type="color" id="primaryColor" value="#4CAF50" class="form-control form-control-color" style="width: 60px; height: 40px;">
+                            <input type="text" id="colorText" value="#4CAF50" class="form-control" style="max-width: 120px;">
+                        </div>
+                        <div class="form-text">Widget accent color</div>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Position</label>
+                        <select id="widgetPosition" class="form-select">
+                            <option value="bottom-right">Bottom Right</option>
+                            <option value="bottom-left">Bottom Left</option>
+                        </select>
+                        <div class="form-text">Widget button position</div>
+                    </div>
+                </div>
+                <button class="btn btn-primary mt-3" onclick="updateCode()">
+                    <i class="fas fa-sync me-2"></i>Update Embed Code
+                </button>
+            </div>
+        </div>
+        
+        <!-- Installation Instructions -->
+        <div class="card mt-4">
+            <div class="card-header">
+                <h5 class="card-title"><i class="fas fa-book me-2"></i>Installation Instructions</h5>
+            </div>
+            <div class="card-body">
+                <div class="accordion" id="installAccordion">
+                    <div class="accordion-item">
+                        <h2 class="accordion-header">
+                            <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#wordpress">
+                                <i class="fab fa-wordpress me-2"></i>WordPress
+                            </button>
+                        </h2>
+                        <div id="wordpress" class="accordion-collapse collapse" data-bs-parent="#installAccordion">
+                            <div class="accordion-body">
+                                <ol class="mb-0">
+                                    <li>Go to <strong>Appearance → Theme Editor</strong></li>
+                                    <li>Select <strong>footer.php</strong></li>
+                                    <li>Paste the code before <code>&lt;/body&gt;</code></li>
+                                    <li>Click <strong>Update File</strong></li>
+                                </ol>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="accordion-item">
+                        <h2 class="accordion-header">
+                            <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#shopify">
+                                <i class="fab fa-shopify me-2"></i>Shopify
+                            </button>
+                        </h2>
+                        <div id="shopify" class="accordion-collapse collapse" data-bs-parent="#installAccordion">
+                            <div class="accordion-body">
+                                <ol class="mb-0">
+                                    <li>Go to <strong>Online Store → Themes</strong></li>
+                                    <li>Click <strong>Actions → Edit code</strong></li>
+                                    <li>Open <strong>theme.liquid</strong></li>
+                                    <li>Paste the code before <code>&lt;/body&gt;</code></li>
+                                    <li>Click <strong>Save</strong></li>
+                                </ol>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="accordion-item">
+                        <h2 class="accordion-header">
+                            <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#squarespace">
+                                <i class="fab fa-squarespace me-2"></i>Squarespace
+                            </button>
+                        </h2>
+                        <div id="squarespace" class="accordion-collapse collapse" data-bs-parent="#installAccordion">
+                            <div class="accordion-body">
+                                <ol class="mb-0">
+                                    <li>Go to <strong>Settings → Advanced → Code Injection</strong></li>
+                                    <li>Paste the code in the <strong>Footer</strong> section</li>
+                                    <li>Click <strong>Save</strong></li>
+                                </ol>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="accordion-item">
+                        <h2 class="accordion-header">
+                            <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#wix">
+                                <i class="fab fa-wix me-2"></i>Wix
+                            </button>
+                        </h2>
+                        <div id="wix" class="accordion-collapse collapse" data-bs-parent="#installAccordion">
+                            <div class="accordion-body">
+                                <ol class="mb-0">
+                                    <li>Go to <strong>Settings → Custom Code</strong></li>
+                                    <li>Click <strong>Add Custom Code</strong></li>
+                                    <li>Paste the code and select <strong>Body - end</strong></li>
+                                    <li>Click <strong>Apply</strong></li>
+                                </ol>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Preview -->
+    <div class="col-lg-5">
+        <div class="card sticky-top" style="top: 100px;">
+            <div class="card-header">
+                <h5 class="card-title"><i class="fas fa-eye me-2"></i>Preview</h5>
+            </div>
+            <div class="card-body p-0">
+                <div class="widget-preview" id="widgetPreview">
+                    <div class="preview-chat" id="previewChat">
+                        <div class="preview-header" id="previewHeader">
+                            <div class="preview-avatar">
+                                <i class="fas fa-globe"></i>
+                            </div>
+                            <div class="preview-title">
+                                <strong>Book at {{ restaurant.name }}</strong>
+                            </div>
+                            <button class="preview-close"><i class="fas fa-times"></i></button>
+                        </div>
+                        <div class="preview-messages">
+                            <div class="preview-message">
+                                Welcome! How can I help you with your reservation today?
+                            </div>
+                        </div>
+                        <div class="preview-input-area">
+                            <input type="text" class="preview-input" placeholder="Type your message..." disabled>
+                            <button class="preview-voice-btn"><i class="fas fa-microphone"></i></button>
+                            <button class="preview-send-btn"><i class="fas fa-play"></i></button>
+                        </div>
+                        <div class="preview-footer">
+                            Powered by <a href="#">AppointMint</a>
+                        </div>
+                    </div>
+                    <button class="preview-toggle" id="previewToggle">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+.code-block {
+    position: relative;
+    background: #1e293b;
+    border-radius: 12px;
+    padding: 1.5rem;
+    overflow-x: auto;
+}
+
+.code-block pre {
+    margin: 0;
+    color: #e2e8f0;
+    font-family: 'Monaco', 'Menlo', monospace;
+    font-size: 0.8125rem;
+    line-height: 1.6;
+    white-space: pre-wrap;
+    word-break: break-all;
+}
+
+.copy-btn {
+    position: absolute;
+    top: 0.75rem;
+    right: 0.75rem;
+    background: rgba(255,255,255,0.1);
+    border: none;
+    color: white;
+    padding: 0.5rem 1rem;
+    border-radius: 6px;
+    font-size: 0.8125rem;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.copy-btn:hover {
+    background: rgba(255,255,255,0.2);
+}
+
+/* Preview Styles */
+.widget-preview {
+    background: linear-gradient(135deg, #e8f5e9 0%, #f1f8e9 100%);
+    min-height: 500px;
+    position: relative;
+    padding: 2rem;
+    display: flex;
+    align-items: flex-end;
+    justify-content: flex-end;
+}
+
+.preview-chat {
+    width: 320px;
+    background: white;
+    border-radius: 16px;
+    box-shadow: 0 10px 40px rgba(0,0,0,0.15);
+    overflow: hidden;
+}
+
+.preview-header {
+    background: linear-gradient(135deg, #4CAF50, #66BB6A);
+    color: white;
+    padding: 1rem;
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.preview-avatar {
+    width: 36px;
+    height: 36px;
+    background: rgba(255,255,255,0.2);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.preview-title {
+    flex: 1;
+    font-size: 0.9375rem;
+}
+
+.preview-close {
+    background: none;
+    border: none;
+    color: white;
+    opacity: 0.8;
+    cursor: pointer;
+    padding: 0.25rem;
+}
+
+.preview-messages {
+    padding: 1rem;
+    min-height: 200px;
+    background: #f8fafc;
+}
+
+.preview-message {
+    background: white;
+    padding: 0.75rem 1rem;
+    border-radius: 12px;
+    border-bottom-left-radius: 4px;
+    font-size: 0.875rem;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+    border-left: 3px solid #4CAF50;
+}
+
+.preview-input-area {
+    display: flex;
+    gap: 0.5rem;
+    padding: 0.75rem;
+    background: white;
+    border-top: 1px solid #e2e8f0;
+}
+
+.preview-input {
+    flex: 1;
+    border: 1px solid #e2e8f0;
+    border-radius: 20px;
+    padding: 0.5rem 1rem;
+    font-size: 0.875rem;
+    outline: none;
+}
+
+.preview-voice-btn,
+.preview-send-btn {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    border: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+}
+
+.preview-voice-btn {
+    background: #f1f5f9;
+    color: #64748b;
+}
+
+.preview-send-btn {
+    background: #4CAF50;
+    color: white;
+}
+
+.preview-footer {
+    text-align: center;
+    padding: 0.5rem;
+    font-size: 0.75rem;
+    color: #94a3b8;
+    background: #f8fafc;
+}
+
+.preview-footer a {
+    color: #4CAF50;
+    text-decoration: none;
+}
+
+.preview-toggle {
+    position: absolute;
+    bottom: 1rem;
+    right: 1rem;
+    width: 56px;
+    height: 56px;
+    border-radius: 50%;
+    background: #4CAF50;
+    color: white;
+    border: none;
+    box-shadow: 0 4px 12px rgba(76, 175, 80, 0.4);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.25rem;
+    cursor: pointer;
+}
+
+.accordion-button:not(.collapsed) {
+    background: #f0fdf4;
+    color: #166534;
+}
+
+.accordion-button:focus {
+    box-shadow: none;
+    border-color: #e2e8f0;
+}
+</style>
+
+<script>
+function copyCode() {
+    const code = document.getElementById('embedCode').innerText;
+    navigator.clipboard.writeText(code).then(() => {
+        const alert = document.getElementById('copyAlert');
+        alert.style.display = 'block';
+        setTimeout(() => alert.style.display = 'none', 3000);
+    });
+}
+
+function updateCode() {
+    const color = document.getElementById('primaryColor').value;
+    const position = document.getElementById('widgetPosition').value;
+    
+    document.getElementById('colorValue').textContent = color;
+    document.getElementById('positionValue').textContent = position;
+    
+    // Update preview
+    document.getElementById('previewHeader').style.background = `linear-gradient(135deg, ${color}, ${lightenColor(color, 20)})`;
+    document.querySelector('.preview-send-btn').style.background = color;
+    document.querySelector('.preview-toggle').style.background = color;
+    document.querySelector('.preview-message').style.borderLeftColor = color;
+}
+
+document.getElementById('primaryColor').addEventListener('input', function() {
+    document.getElementById('colorText').value = this.value;
+    updateCode();
+});
+
+document.getElementById('colorText').addEventListener('input', function() {
+    if (/^#[0-9A-Fa-f]{6}$/.test(this.value)) {
+        document.getElementById('primaryColor').value = this.value;
+        updateCode();
+    }
+});
+
+document.getElementById('widgetPosition').addEventListener('change', updateCode);
+
+function lightenColor(color, percent) {
+    const num = parseInt(color.replace('#', ''), 16);
+    const amt = Math.round(2.55 * percent);
+    const R = (num >> 16) + amt;
+    const G = (num >> 8 & 0x00FF) + amt;
+    const B = (num & 0x0000FF) + amt;
+    return '#' + (0x1000000 + (R < 255 ? R < 1 ? 0 : R : 255) * 0x10000 +
+        (G < 255 ? G < 1 ? 0 : G : 255) * 0x100 +
+        (B < 255 ? B < 1 ? 0 : B : 255)).toString(16).slice(1);
+}
+</script>
+{% endblock %}

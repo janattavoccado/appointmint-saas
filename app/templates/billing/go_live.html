@@ -1,0 +1,514 @@
+{% extends "admin/base.html" %}
+
+{% block title %}Go Live - {{ restaurant.name }}{% endblock %}
+
+{% block admin_content %}
+<div class="page-header">
+    <div>
+        <nav aria-label="breadcrumb">
+            <ol class="breadcrumb mb-2">
+                <li class="breadcrumb-item"><a href="{{ url_for('admin.restaurants') }}">Restaurants</a></li>
+                <li class="breadcrumb-item"><a href="{{ url_for('admin.restaurant_detail', id=restaurant.id) }}">{{ restaurant.name }}</a></li>
+                <li class="breadcrumb-item active">Go Live</li>
+            </ol>
+        </nav>
+        <h1 class="page-title">Go Live with {{ restaurant.name }}</h1>
+        <p class="page-subtitle">Activate your AI reservation assistant for real customers</p>
+    </div>
+</div>
+
+{% if is_paid %}
+<!-- Already Paid - Show Widget Code -->
+<div class="row g-4">
+    <div class="col-lg-8">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="card-title">
+                    <i class="fas fa-check-circle text-success me-2"></i>
+                    Your Restaurant is Live!
+                </h5>
+            </div>
+            <div class="card-body">
+                <p class="mb-4">Your AI reservation assistant is active and ready to accept bookings. Add the widget to your website using the code below.</p>
+                
+                <h6 class="mb-3">Widget Embed Code</h6>
+                <div class="code-block">
+                    <pre id="widgetCode">&lt;!-- AppointMint Widget --&gt;
+&lt;script src="{{ request.host_url }}static/js/widget.js"&gt;&lt;/script&gt;
+&lt;script&gt;
+  AppointMint.init({
+    restaurantId: {{ restaurant.id }},
+    primaryColor: '{{ restaurant.widget_primary_color or "#2D8B7A" }}',
+    position: '{{ restaurant.widget_position or "bottom-right" }}'
+  });
+&lt;/script&gt;</pre>
+                    <button class="copy-btn" onclick="copyCode()">
+                        <i class="fas fa-copy"></i> Copy
+                    </button>
+                </div>
+                
+                <h6 class="mt-4 mb-3">Installation Instructions</h6>
+                <ol class="instruction-list">
+                    <li>Copy the embed code above</li>
+                    <li>Paste it just before the closing <code>&lt;/body&gt;</code> tag on your website</li>
+                    <li>The widget will appear automatically in the bottom-right corner</li>
+                    <li>Customers can click the widget to start a conversation with your AI assistant</li>
+                </ol>
+                
+                <div class="alert alert-info mt-4">
+                    <i class="fas fa-info-circle me-2"></i>
+                    <strong>Tip:</strong> You can customize the widget appearance in your <a href="{{ url_for('admin.edit_restaurant', id=restaurant.id) }}">restaurant settings</a>.
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-lg-4">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="card-title">Subscription Status</h5>
+            </div>
+            <div class="card-body">
+                <div class="status-badge active">
+                    <i class="fas fa-check-circle"></i>
+                    Active
+                </div>
+                <p class="mt-3 mb-0">
+                    Plan: <strong>{{ tenant.subscription_plan|title }}</strong><br>
+                    {% if tenant.next_billing_date %}
+                    Next billing: {{ tenant.next_billing_date.strftime('%B %d, %Y') }}
+                    {% endif %}
+                </p>
+                <a href="{{ url_for('billing.portal') }}" class="btn btn-outline-primary btn-sm mt-3">
+                    <i class="fas fa-credit-card me-1"></i> Manage Billing
+                </a>
+            </div>
+        </div>
+        
+        <div class="card mt-4">
+            <div class="card-header">
+                <h5 class="card-title">Quick Links</h5>
+            </div>
+            <div class="card-body">
+                <a href="{{ url_for('admin.restaurant_detail', id=restaurant.id) }}" class="quick-link">
+                    <i class="fas fa-robot"></i>
+                    Test AI Assistant
+                </a>
+                <a href="{{ url_for('admin.reservations') }}" class="quick-link">
+                    <i class="fas fa-calendar-check"></i>
+                    View Reservations
+                </a>
+                <a href="{{ url_for('admin.edit_restaurant', id=restaurant.id) }}" class="quick-link">
+                    <i class="fas fa-cog"></i>
+                    Restaurant Settings
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% else %}
+<!-- Trial Mode - Show Upgrade Options -->
+<div class="trial-banner">
+    <div class="trial-info">
+        <div class="trial-icon">
+            <i class="fas fa-clock"></i>
+        </div>
+        <div class="trial-text">
+            <h4>Free Trial Status</h4>
+            <p>
+                {% if trial_days_remaining > 0 %}
+                <strong>{{ trial_days_remaining }} days</strong> remaining
+                {% else %}
+                Trial period ended
+                {% endif %}
+                •
+                {% if trial_bookings_remaining > 0 %}
+                <strong>{{ trial_bookings_remaining }}</strong> test bookings left
+                {% else %}
+                No test bookings remaining
+                {% endif %}
+            </p>
+        </div>
+    </div>
+</div>
+
+<div class="row g-4 mt-2">
+    <!-- Pricing Cards -->
+    <div class="col-12">
+        <h3 class="section-title">Choose Your Plan</h3>
+        <p class="section-subtitle">Select a plan to activate your AI reservation assistant</p>
+    </div>
+    
+    <div class="col-md-6 col-lg-4">
+        <div class="pricing-card">
+            <div class="pricing-header">
+                <h4>Starter</h4>
+                <div class="pricing-price">
+                    <span class="currency">$</span>
+                    <span class="amount">49</span>
+                    <span class="period">/month</span>
+                </div>
+                <p class="pricing-yearly">or $470/year (save 20%)</p>
+            </div>
+            <ul class="pricing-features">
+                <li><i class="fas fa-check"></i> Unlimited reservations</li>
+                <li><i class="fas fa-check"></i> AI voice & text assistant</li>
+                <li><i class="fas fa-check"></i> Email notifications</li>
+                <li><i class="fas fa-check"></i> Basic analytics</li>
+                <li><i class="fas fa-check"></i> 1 restaurant</li>
+                <li><i class="fas fa-check"></i> Email support</li>
+            </ul>
+            <form action="{{ url_for('billing.checkout') }}" method="POST">
+                <input type="hidden" name="plan" value="starter">
+                <input type="hidden" name="billing_period" value="monthly">
+                <input type="hidden" name="restaurant_id" value="{{ restaurant.id }}">
+                <button type="submit" class="btn btn-primary btn-block">
+                    Get Started
+                </button>
+            </form>
+        </div>
+    </div>
+    
+    <div class="col-md-6 col-lg-4">
+        <div class="pricing-card featured">
+            <div class="pricing-badge">Most Popular</div>
+            <div class="pricing-header">
+                <h4>Professional</h4>
+                <div class="pricing-price">
+                    <span class="currency">$</span>
+                    <span class="amount">99</span>
+                    <span class="period">/month</span>
+                </div>
+                <p class="pricing-yearly">or $950/year (save 20%)</p>
+            </div>
+            <ul class="pricing-features">
+                <li><i class="fas fa-check"></i> Everything in Starter</li>
+                <li><i class="fas fa-check"></i> SMS notifications</li>
+                <li><i class="fas fa-check"></i> Advanced analytics</li>
+                <li><i class="fas fa-check"></i> Up to 5 restaurants</li>
+                <li><i class="fas fa-check"></i> Priority support</li>
+                <li><i class="fas fa-check"></i> Custom branding</li>
+            </ul>
+            <form action="{{ url_for('billing.checkout') }}" method="POST">
+                <input type="hidden" name="plan" value="professional">
+                <input type="hidden" name="billing_period" value="monthly">
+                <input type="hidden" name="restaurant_id" value="{{ restaurant.id }}">
+                <button type="submit" class="btn btn-primary btn-block">
+                    Get Started
+                </button>
+            </form>
+        </div>
+    </div>
+    
+    <div class="col-md-6 col-lg-4">
+        <div class="pricing-card">
+            <div class="pricing-header">
+                <h4>Enterprise</h4>
+                <div class="pricing-price">
+                    <span class="amount" style="font-size: 1.5rem;">Custom</span>
+                </div>
+                <p class="pricing-yearly">Contact us for pricing</p>
+            </div>
+            <ul class="pricing-features">
+                <li><i class="fas fa-check"></i> Everything in Professional</li>
+                <li><i class="fas fa-check"></i> Unlimited restaurants</li>
+                <li><i class="fas fa-check"></i> API access</li>
+                <li><i class="fas fa-check"></i> Dedicated support</li>
+                <li><i class="fas fa-check"></i> Custom integrations</li>
+                <li><i class="fas fa-check"></i> SLA guarantee</li>
+            </ul>
+            <a href="mailto:sales@appointmint.com" class="btn btn-outline-primary btn-block">
+                Contact Sales
+            </a>
+        </div>
+    </div>
+</div>
+
+<!-- FAQ Section -->
+<div class="row mt-5">
+    <div class="col-12">
+        <h3 class="section-title">Frequently Asked Questions</h3>
+    </div>
+    <div class="col-lg-6">
+        <div class="faq-item">
+            <h5>What happens when I upgrade?</h5>
+            <p>Your AI assistant will immediately be able to accept real bookings from customers. All test bookings from your trial will be preserved.</p>
+        </div>
+        <div class="faq-item">
+            <h5>Can I change plans later?</h5>
+            <p>Yes! You can upgrade or downgrade your plan at any time from your billing settings.</p>
+        </div>
+    </div>
+    <div class="col-lg-6">
+        <div class="faq-item">
+            <h5>Is there a contract?</h5>
+            <p>No long-term contracts. You can cancel your subscription at any time.</p>
+        </div>
+        <div class="faq-item">
+            <h5>What payment methods do you accept?</h5>
+            <p>We accept all major credit cards through our secure payment processor, Stripe.</p>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<style>
+.trial-banner {
+    background: linear-gradient(135deg, #fef3c7, #fde68a);
+    border-radius: 12px;
+    padding: 1.5rem;
+    margin-bottom: 1rem;
+}
+
+.trial-info {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+}
+
+.trial-icon {
+    width: 48px;
+    height: 48px;
+    background: #f59e0b;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    font-size: 1.25rem;
+}
+
+.trial-text h4 {
+    margin: 0;
+    color: #92400e;
+    font-size: 1rem;
+}
+
+.trial-text p {
+    margin: 0.25rem 0 0;
+    color: #b45309;
+    font-size: 0.9rem;
+}
+
+.section-title {
+    font-size: 1.5rem;
+    font-weight: 600;
+    margin-bottom: 0.5rem;
+}
+
+.section-subtitle {
+    color: var(--text-light);
+    margin-bottom: 1.5rem;
+}
+
+.pricing-card {
+    background: white;
+    border-radius: 16px;
+    padding: 2rem;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+    border: 2px solid var(--border-color);
+    position: relative;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+}
+
+.pricing-card.featured {
+    border-color: var(--primary-color);
+    box-shadow: 0 8px 24px rgba(45, 139, 122, 0.15);
+}
+
+.pricing-badge {
+    position: absolute;
+    top: -12px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: var(--primary-color);
+    color: white;
+    padding: 0.25rem 1rem;
+    border-radius: 20px;
+    font-size: 0.75rem;
+    font-weight: 600;
+}
+
+.pricing-header {
+    text-align: center;
+    margin-bottom: 1.5rem;
+}
+
+.pricing-header h4 {
+    font-size: 1.25rem;
+    font-weight: 600;
+    margin-bottom: 0.5rem;
+}
+
+.pricing-price {
+    display: flex;
+    align-items: baseline;
+    justify-content: center;
+    gap: 0.25rem;
+}
+
+.pricing-price .currency {
+    font-size: 1.5rem;
+    color: var(--text-light);
+}
+
+.pricing-price .amount {
+    font-size: 3rem;
+    font-weight: 700;
+    color: var(--text-color);
+}
+
+.pricing-price .period {
+    font-size: 1rem;
+    color: var(--text-light);
+}
+
+.pricing-yearly {
+    font-size: 0.85rem;
+    color: var(--text-light);
+    margin-top: 0.25rem;
+}
+
+.pricing-features {
+    list-style: none;
+    padding: 0;
+    margin: 0 0 1.5rem;
+    flex-grow: 1;
+}
+
+.pricing-features li {
+    padding: 0.5rem 0;
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    font-size: 0.9rem;
+}
+
+.pricing-features li i {
+    color: var(--primary-color);
+    width: 16px;
+}
+
+.btn-block {
+    width: 100%;
+}
+
+.code-block {
+    background: #1e293b;
+    border-radius: 8px;
+    padding: 1rem;
+    position: relative;
+}
+
+.code-block pre {
+    margin: 0;
+    color: #e2e8f0;
+    font-size: 0.85rem;
+    white-space: pre-wrap;
+    word-break: break-all;
+}
+
+.copy-btn {
+    position: absolute;
+    top: 0.5rem;
+    right: 0.5rem;
+    background: rgba(255, 255, 255, 0.1);
+    border: none;
+    color: #94a3b8;
+    padding: 0.5rem 0.75rem;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 0.8rem;
+    transition: all 0.2s;
+}
+
+.copy-btn:hover {
+    background: rgba(255, 255, 255, 0.2);
+    color: white;
+}
+
+.instruction-list {
+    padding-left: 1.25rem;
+}
+
+.instruction-list li {
+    padding: 0.5rem 0;
+    color: var(--text-color);
+}
+
+.instruction-list code {
+    background: #f1f5f9;
+    padding: 0.125rem 0.375rem;
+    border-radius: 4px;
+    font-size: 0.85rem;
+}
+
+.status-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 1rem;
+    border-radius: 20px;
+    font-weight: 600;
+    font-size: 0.9rem;
+}
+
+.status-badge.active {
+    background: #dcfce7;
+    color: #166534;
+}
+
+.quick-link {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.75rem;
+    color: var(--text-color);
+    text-decoration: none;
+    border-radius: 8px;
+    transition: background 0.2s;
+}
+
+.quick-link:hover {
+    background: #f8fafc;
+    color: var(--primary-color);
+}
+
+.quick-link i {
+    width: 20px;
+    color: var(--primary-color);
+}
+
+.faq-item {
+    margin-bottom: 1.5rem;
+}
+
+.faq-item h5 {
+    font-size: 1rem;
+    font-weight: 600;
+    margin-bottom: 0.5rem;
+}
+
+.faq-item p {
+    color: var(--text-light);
+    font-size: 0.9rem;
+    margin: 0;
+}
+</style>
+
+<script>
+function copyCode() {
+    const code = document.getElementById('widgetCode').textContent;
+    navigator.clipboard.writeText(code).then(() => {
+        const btn = document.querySelector('.copy-btn');
+        btn.innerHTML = '<i class="fas fa-check"></i> Copied!';
+        setTimeout(() => {
+            btn.innerHTML = '<i class="fas fa-copy"></i> Copy';
+        }, 2000);
+    });
+}
+</script>
+{% endblock %}

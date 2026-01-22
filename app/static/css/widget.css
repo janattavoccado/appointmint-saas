@@ -1,0 +1,480 @@
+/**
+ * AppointMint Reservation Widget Styles
+ * Embeddable chat widget for restaurant websites
+ * Design: Green header, rounded input, separate buttons
+ */
+
+/* CSS Variables for theming */
+:root {
+    --appointmint-primary: #4CAF50;
+    --appointmint-primary-dark: #43A047;
+    --appointmint-primary-light: #81C784;
+    --appointmint-bg: #ffffff;
+    --appointmint-chat-bg: #f5f5f5;
+    --appointmint-text: #333333;
+    --appointmint-text-light: #666666;
+    --appointmint-border: #e0e0e0;
+    --appointmint-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+    --appointmint-radius: 16px;
+    --appointmint-font: 'Segoe UI', -apple-system, BlinkMacSystemFont, Roboto, sans-serif;
+}
+
+/* Widget Container */
+.appointmint-widget {
+    position: fixed;
+    z-index: 999999;
+    font-family: var(--appointmint-font);
+    font-size: 14px;
+    line-height: 1.5;
+}
+
+.appointmint-widget.bottom-right {
+    bottom: 20px;
+    right: 20px;
+}
+
+.appointmint-widget.bottom-left {
+    bottom: 20px;
+    left: 20px;
+}
+
+/* Toggle Button - X style when open */
+.appointmint-toggle {
+    width: 56px;
+    height: 56px;
+    border-radius: 50%;
+    background: var(--appointmint-primary);
+    border: none;
+    cursor: pointer;
+    box-shadow: var(--appointmint-shadow);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: transform 0.3s ease, background 0.3s ease;
+}
+
+.appointmint-toggle:hover {
+    transform: scale(1.05);
+    background: var(--appointmint-primary-dark);
+}
+
+.appointmint-toggle svg {
+    width: 24px;
+    height: 24px;
+    fill: white;
+    transition: transform 0.3s ease;
+}
+
+.appointmint-toggle.open .chat-icon {
+    display: none;
+}
+
+.appointmint-toggle .close-icon {
+    display: none;
+}
+
+.appointmint-toggle.open .close-icon {
+    display: block;
+}
+
+/* Chat Window */
+.appointmint-chat {
+    position: absolute;
+    bottom: 70px;
+    width: 380px;
+    max-width: calc(100vw - 40px);
+    height: 520px;
+    max-height: calc(100vh - 120px);
+    background: var(--appointmint-bg);
+    border-radius: var(--appointmint-radius);
+    box-shadow: var(--appointmint-shadow);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    opacity: 0;
+    transform: translateY(20px) scale(0.95);
+    pointer-events: none;
+    transition: opacity 0.3s ease, transform 0.3s ease;
+}
+
+.appointmint-widget.bottom-right .appointmint-chat {
+    right: 0;
+}
+
+.appointmint-widget.bottom-left .appointmint-chat {
+    left: 0;
+}
+
+.appointmint-chat.open {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    pointer-events: auto;
+}
+
+/* Chat Header - Green gradient */
+.appointmint-header {
+    background: linear-gradient(135deg, var(--appointmint-primary) 0%, var(--appointmint-primary-light) 100%);
+    color: white;
+    padding: 16px 20px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    border-radius: var(--appointmint-radius) var(--appointmint-radius) 0 0;
+}
+
+.appointmint-avatar {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.3);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 600;
+    font-size: 14px;
+}
+
+.appointmint-avatar svg {
+    width: 20px;
+    height: 20px;
+    fill: white;
+}
+
+.appointmint-header-info {
+    flex: 1;
+}
+
+.appointmint-header-title {
+    font-weight: 600;
+    font-size: 16px;
+    margin: 0;
+}
+
+.appointmint-header-subtitle {
+    display: none;
+}
+
+.appointmint-close {
+    background: none;
+    border: none;
+    color: white;
+    cursor: pointer;
+    padding: 4px;
+    opacity: 0.9;
+    transition: opacity 0.2s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.appointmint-close:hover {
+    opacity: 1;
+}
+
+.appointmint-close svg {
+    width: 20px;
+    height: 20px;
+}
+
+/* Messages Container */
+.appointmint-messages {
+    flex: 1;
+    overflow-y: auto;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    background: var(--appointmint-chat-bg);
+}
+
+/* Message Bubbles */
+.appointmint-message {
+    max-width: 90%;
+    padding: 12px 16px;
+    border-radius: 12px;
+    animation: messageIn 0.3s ease;
+    font-size: 14px;
+    line-height: 1.5;
+}
+
+@keyframes messageIn {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.appointmint-message.user {
+    background: var(--appointmint-primary);
+    color: white;
+    align-self: flex-end;
+    border-bottom-right-radius: 4px;
+}
+
+.appointmint-message.assistant {
+    background: white;
+    color: var(--appointmint-text);
+    align-self: flex-start;
+    border-bottom-left-radius: 4px;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+    border: 1px solid var(--appointmint-border);
+}
+
+.appointmint-message.system {
+    background: #fff3cd;
+    color: #856404;
+    align-self: center;
+    font-size: 13px;
+    padding: 8px 12px;
+    border: 1px solid #ffc107;
+}
+
+/* Typing Indicator */
+.appointmint-typing {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 12px 16px;
+    background: white;
+    border-radius: 12px;
+    border-bottom-left-radius: 4px;
+    align-self: flex-start;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+    border: 1px solid var(--appointmint-border);
+}
+
+.appointmint-typing span {
+    width: 8px;
+    height: 8px;
+    background: var(--appointmint-text-light);
+    border-radius: 50%;
+    animation: typing 1.4s infinite;
+}
+
+.appointmint-typing span:nth-child(2) {
+    animation-delay: 0.2s;
+}
+
+.appointmint-typing span:nth-child(3) {
+    animation-delay: 0.4s;
+}
+
+@keyframes typing {
+    0%, 60%, 100% {
+        transform: translateY(0);
+        opacity: 0.4;
+    }
+    30% {
+        transform: translateY(-4px);
+        opacity: 1;
+    }
+}
+
+/* Input Area - New design with rounded input and separate buttons */
+.appointmint-input-area {
+    padding: 16px;
+    background: white;
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    border-top: 1px solid var(--appointmint-border);
+}
+
+.appointmint-input-wrapper {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    background: #f8f8f8;
+    border: 1px solid var(--appointmint-border);
+    border-radius: 25px;
+    padding: 0 16px;
+    transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.appointmint-input-wrapper:focus-within {
+    border-color: var(--appointmint-primary);
+    box-shadow: 0 0 0 2px rgba(76, 175, 80, 0.1);
+}
+
+.appointmint-input {
+    flex: 1;
+    border: none;
+    background: none;
+    padding: 12px 0;
+    font-size: 14px;
+    font-family: inherit;
+    resize: none;
+    max-height: 80px;
+    outline: none;
+    color: var(--appointmint-text);
+}
+
+.appointmint-input::placeholder {
+    color: #999;
+}
+
+/* Voice Button - Circular green */
+.appointmint-voice {
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    background: var(--appointmint-primary);
+    border: none;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.2s, transform 0.2s;
+    flex-shrink: 0;
+}
+
+.appointmint-voice:hover {
+    background: var(--appointmint-primary-dark);
+    transform: scale(1.05);
+}
+
+.appointmint-voice.recording {
+    background: #f44336;
+    animation: pulse 1.5s infinite;
+}
+
+@keyframes pulse {
+    0%, 100% {
+        box-shadow: 0 0 0 0 rgba(244, 67, 54, 0.4);
+    }
+    50% {
+        box-shadow: 0 0 0 10px rgba(244, 67, 54, 0);
+    }
+}
+
+.appointmint-voice svg {
+    width: 20px;
+    height: 20px;
+    fill: white;
+}
+
+/* Send Button - Circular green */
+.appointmint-send {
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    background: var(--appointmint-primary);
+    border: none;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.2s, transform 0.2s;
+    flex-shrink: 0;
+}
+
+.appointmint-send:hover {
+    background: var(--appointmint-primary-dark);
+    transform: scale(1.05);
+}
+
+.appointmint-send:disabled {
+    background: #ccc;
+    cursor: not-allowed;
+    transform: none;
+}
+
+.appointmint-send svg {
+    width: 20px;
+    height: 20px;
+    fill: white;
+}
+
+/* Voice Recording Indicator */
+.appointmint-recording-indicator {
+    display: none;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 16px;
+    background: #ffebee;
+    color: #c62828;
+    font-size: 13px;
+    border-top: 1px solid #ffcdd2;
+}
+
+.appointmint-recording-indicator.active {
+    display: flex;
+}
+
+.appointmint-recording-dot {
+    width: 10px;
+    height: 10px;
+    background: #f44336;
+    border-radius: 50%;
+    animation: blink 1s infinite;
+}
+
+@keyframes blink {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.3; }
+}
+
+/* Powered By */
+.appointmint-powered {
+    padding: 10px;
+    text-align: center;
+    font-size: 12px;
+    color: var(--appointmint-text-light);
+    background: white;
+}
+
+.appointmint-powered a {
+    color: var(--appointmint-primary);
+    text-decoration: none;
+    font-weight: 500;
+}
+
+.appointmint-powered a:hover {
+    text-decoration: underline;
+}
+
+/* Mobile Responsive */
+@media (max-width: 480px) {
+    .appointmint-chat {
+        width: calc(100vw - 20px);
+        height: calc(100vh - 100px);
+        bottom: 70px;
+        right: 10px !important;
+        left: 10px !important;
+        border-radius: 12px;
+    }
+    
+    .appointmint-widget.bottom-right,
+    .appointmint-widget.bottom-left {
+        right: 10px;
+        left: auto;
+        bottom: 10px;
+    }
+    
+    .appointmint-toggle {
+        width: 52px;
+        height: 52px;
+    }
+}
+
+/* Scrollbar Styling */
+.appointmint-messages::-webkit-scrollbar {
+    width: 6px;
+}
+
+.appointmint-messages::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.appointmint-messages::-webkit-scrollbar-thumb {
+    background: #ccc;
+    border-radius: 3px;
+}
+
+.appointmint-messages::-webkit-scrollbar-thumb:hover {
+    background: #aaa;
+}

@@ -1,0 +1,160 @@
+{% extends "admin/base.html" %}
+
+{% block title %}{{ 'Edit' if restaurant else 'Add' }} Restaurant - AppointMint{% endblock %}
+
+{% block admin_content %}
+<div class="page-header">
+    <div>
+        <nav aria-label="breadcrumb">
+            <ol class="breadcrumb mb-2">
+                <li class="breadcrumb-item"><a href="{{ url_for('admin.restaurants') }}">Restaurants</a></li>
+                <li class="breadcrumb-item active">{{ 'Edit' if restaurant else 'Add' }}</li>
+            </ol>
+        </nav>
+        <h1 class="page-title">{{ 'Edit' if restaurant else 'Add New' }} Restaurant</h1>
+        <p class="page-subtitle">{{ 'Update restaurant information' if restaurant else 'Create a new restaurant for your organization' }}</p>
+    </div>
+</div>
+
+<div class="row justify-content-center">
+    <div class="col-lg-8">
+        <form method="POST" class="card">
+            <div class="card-header">
+                <h5 class="card-title">Restaurant Information</h5>
+            </div>
+            <div class="card-body">
+                {% if tenants %}
+                <div class="mb-4">
+                    <label for="tenant_id" class="form-label">Client (Organization) <span class="text-danger">*</span></label>
+                    <select class="form-select" id="tenant_id" name="tenant_id" required>
+                        <option value="">Select a client...</option>
+                        {% for tenant in tenants %}
+                        <option value="{{ tenant.id }}" {% if restaurant and restaurant.tenant_id == tenant.id %}selected{% endif %}>
+                            {{ tenant.name }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                    <div class="form-text">Select the client organization this restaurant belongs to</div>
+                </div>
+                {% endif %}
+                
+                <div class="row g-3">
+                    <div class="col-md-8">
+                        <label for="name" class="form-label">Restaurant Name <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control" id="name" name="name" 
+                               value="{{ restaurant.name if restaurant else '' }}" required
+                               placeholder="e.g., The Italian Kitchen">
+                    </div>
+                    <div class="col-md-4">
+                        <label for="cuisine_type" class="form-label">Cuisine Type</label>
+                        <input type="text" class="form-control" id="cuisine_type" name="cuisine_type" 
+                               value="{{ restaurant.cuisine_type if restaurant else '' }}"
+                               placeholder="e.g., Italian">
+                    </div>
+                </div>
+                
+                <div class="mt-3">
+                    <label for="description" class="form-label">Description</label>
+                    <textarea class="form-control" id="description" name="description" rows="3"
+                              placeholder="Brief description of the restaurant...">{{ restaurant.description if restaurant else '' }}</textarea>
+                    <div class="form-text">This will be used by the AI assistant to describe the restaurant</div>
+                </div>
+                
+                <hr class="my-4">
+                
+                <h6 class="text-muted mb-3"><i class="fas fa-map-marker-alt me-2"></i>Location</h6>
+                
+                <div class="mb-3">
+                    <label for="address" class="form-label">Street Address</label>
+                    <input type="text" class="form-control" id="address" name="address" 
+                           value="{{ restaurant.address if restaurant else '' }}"
+                           placeholder="123 Main Street">
+                </div>
+                
+                <div class="row g-3">
+                    <div class="col-md-5">
+                        <label for="city" class="form-label">City</label>
+                        <input type="text" class="form-control" id="city" name="city" 
+                               value="{{ restaurant.city if restaurant else '' }}"
+                               placeholder="New York">
+                    </div>
+                    <div class="col-md-4">
+                        <label for="state" class="form-label">State/Province</label>
+                        <input type="text" class="form-control" id="state" name="state" 
+                               value="{{ restaurant.state if restaurant else '' }}"
+                               placeholder="NY">
+                    </div>
+                    <div class="col-md-3">
+                        <label for="zip_code" class="form-label">ZIP Code</label>
+                        <input type="text" class="form-control" id="zip_code" name="zip_code" 
+                               value="{{ restaurant.zip_code if restaurant else '' }}"
+                               placeholder="10001">
+                    </div>
+                </div>
+                
+                <hr class="my-4">
+                
+                <h6 class="text-muted mb-3"><i class="fas fa-phone me-2"></i>Contact Information</h6>
+                
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <label for="phone" class="form-label">Phone Number</label>
+                        <input type="tel" class="form-control" id="phone" name="phone" 
+                               value="{{ restaurant.phone if restaurant else '' }}"
+                               placeholder="+1 (555) 123-4567">
+                    </div>
+                    <div class="col-md-6">
+                        <label for="email" class="form-label">Email Address</label>
+                        <input type="email" class="form-control" id="email" name="email" 
+                               value="{{ restaurant.email if restaurant else '' }}"
+                               placeholder="info@restaurant.com">
+                    </div>
+                </div>
+                
+                <hr class="my-4">
+                
+                <h6 class="text-muted mb-3"><i class="fas fa-clock me-2"></i>Settings</h6>
+                
+                <div class="mb-3">
+                    <label for="timezone" class="form-label">Timezone</label>
+                    <select id="timezone" name="timezone" class="form-select">
+                        <option value="UTC" {{ 'selected' if not restaurant or restaurant.timezone == 'UTC' else '' }}>UTC</option>
+                        <option value="America/New_York" {{ 'selected' if restaurant and restaurant.timezone == 'America/New_York' else '' }}>Eastern Time (ET)</option>
+                        <option value="America/Chicago" {{ 'selected' if restaurant and restaurant.timezone == 'America/Chicago' else '' }}>Central Time (CT)</option>
+                        <option value="America/Denver" {{ 'selected' if restaurant and restaurant.timezone == 'America/Denver' else '' }}>Mountain Time (MT)</option>
+                        <option value="America/Los_Angeles" {{ 'selected' if restaurant and restaurant.timezone == 'America/Los_Angeles' else '' }}>Pacific Time (PT)</option>
+                        <option value="Europe/London" {{ 'selected' if restaurant and restaurant.timezone == 'Europe/London' else '' }}>London (GMT/BST)</option>
+                        <option value="Europe/Paris" {{ 'selected' if restaurant and restaurant.timezone == 'Europe/Paris' else '' }}>Paris (CET/CEST)</option>
+                        <option value="Europe/Berlin" {{ 'selected' if restaurant and restaurant.timezone == 'Europe/Berlin' else '' }}>Berlin (CET/CEST)</option>
+                        <option value="Europe/Amsterdam" {{ 'selected' if restaurant and restaurant.timezone == 'Europe/Amsterdam' else '' }}>Amsterdam (CET/CEST)</option>
+                        <option value="Europe/Stockholm" {{ 'selected' if restaurant and restaurant.timezone == 'Europe/Stockholm' else '' }}>Stockholm (CET/CEST)</option>
+                        <option value="Europe/Zagreb" {{ 'selected' if restaurant and restaurant.timezone == 'Europe/Zagreb' else '' }}>Zagreb (CET/CEST)</option>
+                        <option value="Asia/Tokyo" {{ 'selected' if restaurant and restaurant.timezone == 'Asia/Tokyo' else '' }}>Tokyo (JST)</option>
+                        <option value="Asia/Shanghai" {{ 'selected' if restaurant and restaurant.timezone == 'Asia/Shanghai' else '' }}>Shanghai (CST)</option>
+                        <option value="Australia/Sydney" {{ 'selected' if restaurant and restaurant.timezone == 'Australia/Sydney' else '' }}>Sydney (AEST/AEDT)</option>
+                    </select>
+                </div>
+                
+                {% if restaurant %}
+                <div class="form-check form-switch">
+                    <input class="form-check-input" type="checkbox" id="is_active" name="is_active" 
+                           {% if restaurant.is_active %}checked{% endif %}>
+                    <label class="form-check-label" for="is_active">
+                        <strong>Active</strong>
+                        <span class="d-block text-muted small">Restaurant is visible and can accept reservations</span>
+                    </label>
+                </div>
+                {% endif %}
+            </div>
+            <div class="card-footer d-flex justify-content-between">
+                <a href="{{ url_for('admin.restaurants') }}" class="btn btn-outline-secondary">
+                    <i class="fas fa-arrow-left me-2"></i>Cancel
+                </a>
+                <button type="submit" class="btn btn-primary">
+                    <i class="fas fa-save me-2"></i>{{ 'Update' if restaurant else 'Add' }} Restaurant
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,214 @@
+{% extends "admin/base.html" %}
+
+{% block title %}AI Conversations - AppointMint{% endblock %}
+
+{% block admin_content %}
+<div class="page-header">
+    <div>
+        <h1 class="page-title">AI Conversations</h1>
+        <p class="page-subtitle">View all AI assistant interactions</p>
+    </div>
+</div>
+
+<!-- Stats Cards -->
+<div class="row g-4 mb-4">
+    <div class="col-md-3">
+        <div class="stat-card">
+            <div class="stat-icon" style="background: linear-gradient(135deg, #4CAF50, #66BB6A);">
+                <i class="fas fa-comments"></i>
+            </div>
+            <div class="stat-content">
+                <div class="stat-value">{{ conversations|length if conversations else 0 }}</div>
+                <div class="stat-label">Total Conversations</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="stat-card">
+            <div class="stat-icon" style="background: linear-gradient(135deg, #2196F3, #42A5F5);">
+                <i class="fas fa-check-circle"></i>
+            </div>
+            <div class="stat-content">
+                <div class="stat-value">{{ conversations|selectattr('status', 'equalto', 'completed')|list|length if conversations else 0 }}</div>
+                <div class="stat-label">Completed</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="stat-card">
+            <div class="stat-icon" style="background: linear-gradient(135deg, #FF9800, #FFB74D);">
+                <i class="fas fa-spinner"></i>
+            </div>
+            <div class="stat-content">
+                <div class="stat-value">{{ conversations|selectattr('status', 'equalto', 'in_progress')|list|length if conversations else 0 }}</div>
+                <div class="stat-label">In Progress</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="stat-card">
+            <div class="stat-icon" style="background: linear-gradient(135deg, #9C27B0, #BA68C8);">
+                <i class="fas fa-coins"></i>
+            </div>
+            <div class="stat-content">
+                <div class="stat-value">{{ conversations|sum(attribute='tokens_used') if conversations else 0 }}</div>
+                <div class="stat-label">Total Tokens</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Conversations List -->
+<div class="card">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <h5 class="card-title mb-0">Recent Conversations</h5>
+        <div class="d-flex gap-2">
+            <select class="form-select form-select-sm" style="width: auto;">
+                <option>All Types</option>
+                <option>Text</option>
+                <option>Voice</option>
+            </select>
+        </div>
+    </div>
+    <div class="card-body p-0">
+        {% if conversations %}
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Restaurant</th>
+                        <th>Type</th>
+                        <th>Customer</th>
+                        <th>Started</th>
+                        <th>Tokens</th>
+                        <th>Status</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for conversation in conversations %}
+                    <tr>
+                        <td>
+                            <div class="d-flex align-items-center gap-2">
+                                <div class="session-icon">
+                                    <i class="fas fa-robot"></i>
+                                </div>
+                                <span class="fw-medium">#{{ conversation.id }}</span>
+                            </div>
+                        </td>
+                        <td>
+                            {% if conversation.restaurant %}
+                            <span class="fw-medium">{{ conversation.restaurant.name }}</span>
+                            {% else %}
+                            <span class="text-muted">-</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <span class="badge bg-info"><i class="fas fa-comment me-1"></i>{{ conversation.conversation_type|capitalize }}</span>
+                        </td>
+                        <td>
+                            <span class="text-muted">{{ conversation.customer_phone or '-' }}</span>
+                        </td>
+                        <td>
+                            <span class="text-muted small">{{ conversation.started_at.strftime('%b %d, %Y %H:%M') }}</span>
+                        </td>
+                        <td>
+                            <span class="fw-medium">{{ conversation.tokens_used }}</span>
+                        </td>
+                        <td>
+                            {% if conversation.status == 'completed' %}
+                            <span class="status-badge status-active"><i class="fas fa-check me-1"></i>Completed</span>
+                            {% elif conversation.status == 'in_progress' %}
+                            <span class="status-badge status-warning"><i class="fas fa-clock me-1"></i>In Progress</span>
+                            {% else %}
+                            <span class="status-badge status-inactive">{{ conversation.status|capitalize }}</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="empty-state">
+            <div class="empty-icon">
+                <i class="fas fa-comments"></i>
+            </div>
+            <h5>No conversations yet</h5>
+            <p class="text-muted">AI conversations will appear here when customers interact with your booking assistant</p>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<style>
+.session-icon {
+    width: 32px;
+    height: 32px;
+    background: linear-gradient(135deg, #4CAF50, #66BB6A);
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    font-size: 0.875rem;
+}
+
+.status-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.25rem 0.5rem;
+    border-radius: 20px;
+    font-size: 0.7rem;
+    font-weight: 500;
+}
+
+.status-active {
+    background: #dcfce7;
+    color: #166534;
+}
+
+.status-warning {
+    background: #fef3c7;
+    color: #92400e;
+}
+
+.status-inactive {
+    background: #f1f5f9;
+    color: #64748b;
+}
+
+.empty-state {
+    padding: 4rem 2rem;
+    text-align: center;
+}
+
+.empty-icon {
+    width: 80px;
+    height: 80px;
+    background: #f1f5f9;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 0 auto 1.5rem;
+    font-size: 2rem;
+    color: #94a3b8;
+}
+
+.table th {
+    font-weight: 500;
+    color: #64748b;
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    border-bottom: 2px solid #f1f5f9;
+}
+
+.table td {
+    vertical-align: middle;
+    padding: 1rem;
+    border-bottom: 1px solid #f8fafc;
+}
+</style>
+{% endblock %}

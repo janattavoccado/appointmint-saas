@@ -1,0 +1,270 @@
+{% extends "admin/base.html" %}
+
+{% block title %}Reservations - AppointMint{% endblock %}
+
+{% block admin_content %}
+<div class="page-header">
+    <div>
+        <h1 class="page-title">Reservations</h1>
+        <p class="page-subtitle">Manage all table reservations</p>
+    </div>
+    <div class="d-flex gap-2">
+        <select class="form-select" id="statusFilter" style="width: auto;">
+            <option value="">All Status</option>
+            <option value="pending">Pending</option>
+            <option value="confirmed">Confirmed</option>
+            <option value="seated">Seated</option>
+            <option value="completed">Completed</option>
+            <option value="cancelled">Cancelled</option>
+            <option value="no_show">No Show</option>
+        </select>
+    </div>
+</div>
+
+<!-- Stats Cards -->
+<div class="row g-4 mb-4">
+    <div class="col-md-3">
+        <div class="stat-card">
+            <div class="stat-icon" style="background: linear-gradient(135deg, #4CAF50, #66BB6A);">
+                <i class="fas fa-calendar-check"></i>
+            </div>
+            <div class="stat-content">
+                <div class="stat-value">{{ reservations|length }}</div>
+                <div class="stat-label">Total Reservations</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="stat-card">
+            <div class="stat-icon" style="background: linear-gradient(135deg, #FF9800, #FFB74D);">
+                <i class="fas fa-clock"></i>
+            </div>
+            <div class="stat-content">
+                <div class="stat-value">{{ reservations|selectattr('status', 'equalto', 'pending')|list|length }}</div>
+                <div class="stat-label">Pending</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="stat-card">
+            <div class="stat-icon" style="background: linear-gradient(135deg, #2196F3, #42A5F5);">
+                <i class="fas fa-check-circle"></i>
+            </div>
+            <div class="stat-content">
+                <div class="stat-value">{{ reservations|selectattr('status', 'equalto', 'confirmed')|list|length }}</div>
+                <div class="stat-label">Confirmed</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="stat-card">
+            <div class="stat-icon" style="background: linear-gradient(135deg, #9C27B0, #BA68C8);">
+                <i class="fas fa-robot"></i>
+            </div>
+            <div class="stat-content">
+                <div class="stat-value">{{ reservations|selectattr('source', 'equalto', 'ai_assistant')|list|length }}</div>
+                <div class="stat-label">AI Booked</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Reservations Table -->
+<div class="card">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <h5 class="card-title mb-0">All Reservations</h5>
+        <input type="text" class="form-control form-control-sm" placeholder="Search..." id="searchInput" style="width: 200px;">
+    </div>
+    <div class="card-body p-0">
+        {% if reservations %}
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Customer</th>
+                        <th>Restaurant</th>
+                        <th>Date & Time</th>
+                        <th>Party</th>
+                        <th>Source</th>
+                        <th>Status</th>
+                        <th class="text-end">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for reservation in reservations %}
+                    <tr data-status="{{ reservation.status }}">
+                        <td><span class="text-muted">#{{ reservation.id }}</span></td>
+                        <td>
+                            <div class="d-flex align-items-center gap-3">
+                                <div class="avatar-sm">
+                                    {{ reservation.customer_name[0]|upper if reservation.customer_name else '?' }}
+                                </div>
+                                <div>
+                                    <div class="fw-semibold">{{ reservation.customer_name }}</div>
+                                    <div class="text-muted small">{{ reservation.customer_phone }}</div>
+                                </div>
+                            </div>
+                        </td>
+                        <td>
+                            <span class="text-primary">{{ reservation.restaurant.name }}</span>
+                        </td>
+                        <td>
+                            <div class="fw-semibold">{{ reservation.reservation_date.strftime('%b %d, %Y') }}</div>
+                            <div class="text-muted small">{{ reservation.reservation_time.strftime('%H:%M') }}</div>
+                        </td>
+                        <td>
+                            <span class="badge bg-light text-dark">
+                                <i class="fas fa-users me-1"></i>{{ reservation.party_size }}
+                            </span>
+                        </td>
+                        <td>
+                            {% if reservation.source == 'ai_assistant' %}
+                            <span class="badge bg-purple"><i class="fas fa-robot me-1"></i>AI</span>
+                            {% elif reservation.source == 'phone' %}
+                            <span class="badge bg-info"><i class="fas fa-phone me-1"></i>Phone</span>
+                            {% elif reservation.source == 'walk_in' %}
+                            <span class="badge bg-secondary"><i class="fas fa-walking me-1"></i>Walk-in</span>
+                            {% else %}
+                            <span class="badge bg-primary"><i class="fas fa-globe me-1"></i>Online</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if reservation.status == 'pending' %}
+                            <span class="status-badge status-pending">Pending</span>
+                            {% elif reservation.status == 'confirmed' %}
+                            <span class="status-badge status-confirmed">Confirmed</span>
+                            {% elif reservation.status == 'seated' %}
+                            <span class="status-badge status-seated">Seated</span>
+                            {% elif reservation.status == 'completed' %}
+                            <span class="status-badge status-completed">Completed</span>
+                            {% elif reservation.status == 'cancelled' %}
+                            <span class="status-badge status-cancelled">Cancelled</span>
+                            {% else %}
+                            <span class="status-badge status-noshow">No Show</span>
+                            {% endif %}
+                        </td>
+                        <td class="text-end">
+                            <div class="btn-group btn-group-sm">
+                                <a href="{{ url_for('admin.reservation_detail', id=reservation.id) }}" class="btn btn-outline-primary" title="View">
+                                    <i class="fas fa-eye"></i>
+                                </a>
+                            </div>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="empty-state">
+            <div class="empty-icon">
+                <i class="fas fa-calendar-alt"></i>
+            </div>
+            <h5>No reservations yet</h5>
+            <p class="text-muted">Reservations will appear here once customers start booking</p>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<style>
+.avatar-sm {
+    width: 36px;
+    height: 36px;
+    background: linear-gradient(135deg, #4CAF50, #66BB6A);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    font-weight: 600;
+    font-size: 0.8rem;
+}
+
+.status-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.25rem 0.75rem;
+    border-radius: 20px;
+    font-size: 0.75rem;
+    font-weight: 500;
+}
+
+.status-pending {
+    background: #fef3c7;
+    color: #92400e;
+}
+
+.status-confirmed {
+    background: #dbeafe;
+    color: #1e40af;
+}
+
+.status-seated {
+    background: #dcfce7;
+    color: #166534;
+}
+
+.status-completed {
+    background: #e0e7ff;
+    color: #3730a3;
+}
+
+.status-cancelled {
+    background: #fee2e2;
+    color: #991b1b;
+}
+
+.status-noshow {
+    background: #fecaca;
+    color: #7f1d1d;
+}
+
+.bg-purple {
+    background: #9C27B0 !important;
+    color: white !important;
+}
+
+.empty-state {
+    padding: 4rem 2rem;
+    text-align: center;
+}
+
+.empty-icon {
+    width: 80px;
+    height: 80px;
+    background: #f1f5f9;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 0 auto 1.5rem;
+    font-size: 2rem;
+    color: #94a3b8;
+}
+</style>
+
+<script>
+// Search functionality
+document.getElementById('searchInput').addEventListener('input', function() {
+    const search = this.value.toLowerCase();
+    document.querySelectorAll('tbody tr').forEach(row => {
+        const text = row.textContent.toLowerCase();
+        row.style.display = text.includes(search) ? '' : 'none';
+    });
+});
+
+// Status filter
+document.getElementById('statusFilter').addEventListener('change', function() {
+    const status = this.value;
+    document.querySelectorAll('tbody tr').forEach(row => {
+        if (!status || row.dataset.status === status) {
+            row.style.display = '';
+        } else {
+            row.style.display = 'none';
+        }
+    });
+});
+</script>
+{% endblock %}

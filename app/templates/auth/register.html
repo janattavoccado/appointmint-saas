@@ -1,0 +1,188 @@
+{% extends "base.html" %}
+
+{% block title %}Start Free Trial{% endblock %}
+
+{% block content %}
+<div class="auth-page">
+    <div class="auth-card" style="max-width: 560px;">
+        <div class="auth-header">
+            <h1>Start Your Free Trial</h1>
+            <p>14 days free • 15 test bookings • No credit card required</p>
+        </div>
+        
+        <div class="trial-benefits">
+            <div class="benefit-item">
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="20 6 9 17 4 12"></polyline>
+                </svg>
+                <span>AI-powered reservation assistant</span>
+            </div>
+            <div class="benefit-item">
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="20 6 9 17 4 12"></polyline>
+                </svg>
+                <span>Voice & text booking support</span>
+            </div>
+            <div class="benefit-item">
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="20 6 9 17 4 12"></polyline>
+                </svg>
+                <span>Embeddable widget for your website</span>
+            </div>
+        </div>
+        
+        <form method="POST" action="{{ url_for('auth.register') }}" data-validate>
+            <div class="form-section">
+                <h3 class="form-section-title">Restaurant Information</h3>
+                
+                <div class="form-group">
+                    <label class="form-label" for="restaurant_name">Restaurant Name <span class="required">*</span></label>
+                    <input type="text" id="restaurant_name" name="restaurant_name" class="form-input" placeholder="e.g., The Italian Kitchen" required>
+                </div>
+                
+                <div class="form-group">
+                    <label class="form-label" for="company_name">Company / Organization Name</label>
+                    <input type="text" id="company_name" name="company_name" class="form-input" placeholder="Leave blank if same as restaurant">
+                    <small class="form-hint">Optional - defaults to restaurant name</small>
+                </div>
+                
+                <div class="form-group">
+                    <label class="form-label" for="timezone">Timezone <span class="required">*</span></label>
+                    <select id="timezone" name="timezone" class="form-input" required>
+                        <option value="America/New_York">Eastern Time (US & Canada)</option>
+                        <option value="America/Chicago">Central Time (US & Canada)</option>
+                        <option value="America/Denver">Mountain Time (US & Canada)</option>
+                        <option value="America/Los_Angeles">Pacific Time (US & Canada)</option>
+                        <option value="America/Anchorage">Alaska</option>
+                        <option value="Pacific/Honolulu">Hawaii</option>
+                        <option value="Europe/London">London</option>
+                        <option value="Europe/Paris">Paris, Berlin, Rome</option>
+                        <option value="Europe/Zagreb">Zagreb, Belgrade</option>
+                        <option value="Europe/Moscow">Moscow</option>
+                        <option value="Asia/Dubai">Dubai</option>
+                        <option value="Asia/Kolkata">Mumbai, New Delhi</option>
+                        <option value="Asia/Singapore">Singapore</option>
+                        <option value="Asia/Tokyo">Tokyo</option>
+                        <option value="Asia/Shanghai">Beijing, Shanghai</option>
+                        <option value="Australia/Sydney">Sydney</option>
+                        <option value="Pacific/Auckland">Auckland</option>
+                        <option value="UTC">UTC</option>
+                    </select>
+                </div>
+            </div>
+            
+            <div class="form-section">
+                <h3 class="form-section-title">Account Information</h3>
+                
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                    <div class="form-group">
+                        <label class="form-label" for="first_name">First Name</label>
+                        <input type="text" id="first_name" name="first_name" class="form-input" placeholder="John">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label" for="last_name">Last Name</label>
+                        <input type="text" id="last_name" name="last_name" class="form-input" placeholder="Doe">
+                    </div>
+                </div>
+                
+                <div class="form-group">
+                    <label class="form-label" for="email">Email Address <span class="required">*</span></label>
+                    <input type="email" id="email" name="email" class="form-input" placeholder="you@restaurant.com" required>
+                    <small class="form-hint">This will be your login username</small>
+                </div>
+                
+                <div class="form-group">
+                    <label class="form-label" for="phone">Phone Number</label>
+                    <input type="tel" id="phone" name="phone" class="form-input" placeholder="+1 (555) 000-0000">
+                </div>
+                
+                <div class="form-group">
+                    <label class="form-label" for="password">Password <span class="required">*</span></label>
+                    <input type="password" id="password" name="password" class="form-input" placeholder="••••••••" required minlength="8">
+                    <small class="form-hint">Must be at least 8 characters</small>
+                </div>
+                
+                <div class="form-group">
+                    <label class="form-label" for="confirm_password">Confirm Password <span class="required">*</span></label>
+                    <input type="password" id="confirm_password" name="confirm_password" class="form-input" placeholder="••••••••" required>
+                </div>
+            </div>
+            
+            <div class="form-group">
+                <label style="display: flex; align-items: flex-start; gap: 0.5rem; cursor: pointer;">
+                    <input type="checkbox" name="terms" style="width: auto; margin-top: 0.25rem;" required>
+                    <span style="font-size: 0.875rem; color: var(--text-light);">
+                        I agree to the <a href="#" style="color: var(--primary-color);">Terms of Service</a> and <a href="#" style="color: var(--primary-color);">Privacy Policy</a>
+                    </span>
+                </label>
+            </div>
+            
+            <button type="submit" class="btn btn-primary" style="width: 100%; margin-top: 1rem;">
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 0.5rem;">
+                    <path d="M5 12h14"></path>
+                    <path d="m12 5 7 7-7 7"></path>
+                </svg>
+                Start Free Trial
+            </button>
+        </form>
+        
+        <div class="auth-footer">
+            Already have an account? <a href="{{ url_for('auth.login') }}">Sign in</a>
+        </div>
+    </div>
+</div>
+
+<style>
+.trial-benefits {
+    background: linear-gradient(135deg, rgba(45, 139, 122, 0.1), rgba(78, 205, 196, 0.1));
+    border-radius: 12px;
+    padding: 1rem 1.25rem;
+    margin-bottom: 1.5rem;
+}
+
+.benefit-item {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.5rem 0;
+    color: var(--text-color);
+    font-size: 0.9rem;
+}
+
+.benefit-item svg {
+    color: var(--primary-color);
+    flex-shrink: 0;
+}
+
+.form-section {
+    margin-bottom: 1.5rem;
+    padding-bottom: 1.5rem;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.form-section:last-of-type {
+    border-bottom: none;
+    padding-bottom: 0;
+}
+
+.form-section-title {
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--text-color);
+    margin-bottom: 1rem;
+}
+
+.form-hint {
+    color: var(--text-light);
+    font-size: 0.75rem;
+    margin-top: 0.25rem;
+    display: block;
+}
+
+.required {
+    color: #ef4444;
+}
+</style>
+{% endblock %}
+
+{% block footer %}{% endblock %}

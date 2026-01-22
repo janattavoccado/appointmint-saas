@@ -1,0 +1,145 @@
+{% extends "admin/base.html" %}
+
+{% block title %}{{ tenant.name }}{% endblock %}
+
+{% block admin_content %}
+<div class="admin-header">
+    <div>
+        <h1>{{ tenant.name }}</h1>
+        <p style="color: var(--text-light);">Tenant Details</p>
+    </div>
+    <span class="badge badge-{{ 'success' if tenant.subscription_status == 'active' else 'warning' }}" style="font-size: 1rem; padding: 0.5rem 1rem;">
+        {{ tenant.subscription_status|capitalize }}
+    </span>
+</div>
+
+<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem;">
+    <div class="data-table">
+        <div style="padding: 1.5rem;">
+            <h3 style="margin-bottom: 1.5rem; font-size: 1rem; font-weight: 600;">Company Information</h3>
+            
+            <div style="display: grid; gap: 1rem;">
+                <div>
+                    <p style="color: var(--text-light); font-size: 0.875rem; margin-bottom: 0.25rem;">Company Name</p>
+                    <p style="font-weight: 500;">{{ tenant.name }}</p>
+                </div>
+                <div>
+                    <p style="color: var(--text-light); font-size: 0.875rem; margin-bottom: 0.25rem;">Email</p>
+                    <p style="font-weight: 500;">{{ tenant.email }}</p>
+                </div>
+                <div>
+                    <p style="color: var(--text-light); font-size: 0.875rem; margin-bottom: 0.25rem;">Phone</p>
+                    <p style="font-weight: 500;">{{ tenant.phone or '-' }}</p>
+                </div>
+                <div>
+                    <p style="color: var(--text-light); font-size: 0.875rem; margin-bottom: 0.25rem;">Subscription Plan</p>
+                    <p style="font-weight: 500;">{{ tenant.subscription_plan|replace('_', ' ')|title }}</p>
+                </div>
+                <div>
+                    <p style="color: var(--text-light); font-size: 0.875rem; margin-bottom: 0.25rem;">Created</p>
+                    <p style="font-weight: 500;">{{ tenant.created_at.strftime('%B %d, %Y') }}</p>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="data-table">
+        <div style="padding: 1.5rem;">
+            <h3 style="margin-bottom: 1.5rem; font-size: 1rem; font-weight: 600;">Statistics</h3>
+            
+            <div style="display: grid; gap: 1rem;">
+                <div style="display: flex; justify-content: space-between; padding: 1rem; background: var(--gray-50); border-radius: var(--radius);">
+                    <span>Restaurants</span>
+                    <strong>{{ tenant.restaurants|length }}</strong>
+                </div>
+                <div style="display: flex; justify-content: space-between; padding: 1rem; background: var(--gray-50); border-radius: var(--radius);">
+                    <span>Users</span>
+                    <strong>{{ tenant.users|length }}</strong>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Restaurants -->
+<div class="data-table" style="margin-top: 1.5rem;">
+    <div style="padding: 1.25rem; border-bottom: 1px solid var(--gray-200);">
+        <h3 style="font-size: 1rem; font-weight: 600;">Restaurants</h3>
+    </div>
+    <table>
+        <thead>
+            <tr>
+                <th>Name</th>
+                <th>Location</th>
+                <th>Tables</th>
+                <th>Status</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% if tenant.restaurants %}
+            {% for restaurant in tenant.restaurants %}
+            <tr>
+                <td><strong>{{ restaurant.name }}</strong></td>
+                <td>{{ restaurant.city }}, {{ restaurant.state }}</td>
+                <td>{{ restaurant.tables|length }}</td>
+                <td>
+                    <span class="badge badge-{{ 'success' if restaurant.is_active else 'error' }}">
+                        {{ 'Active' if restaurant.is_active else 'Inactive' }}
+                    </span>
+                </td>
+            </tr>
+            {% endfor %}
+            {% else %}
+            <tr>
+                <td colspan="4" style="text-align: center; color: var(--text-light); padding: 1.5rem;">
+                    No restaurants
+                </td>
+            </tr>
+            {% endif %}
+        </tbody>
+    </table>
+</div>
+
+<!-- Users -->
+<div class="data-table" style="margin-top: 1.5rem;">
+    <div style="padding: 1.25rem; border-bottom: 1px solid var(--gray-200);">
+        <h3 style="font-size: 1rem; font-weight: 600;">Users</h3>
+    </div>
+    <table>
+        <thead>
+            <tr>
+                <th>Name</th>
+                <th>Email</th>
+                <th>Role</th>
+                <th>Status</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% if tenant.users %}
+            {% for user in tenant.users %}
+            <tr>
+                <td><strong>{{ user.full_name }}</strong></td>
+                <td>{{ user.email }}</td>
+                <td>{{ user.role|replace('_', ' ')|title }}</td>
+                <td>
+                    <span class="badge badge-{{ 'success' if user.is_active else 'error' }}">
+                        {{ 'Active' if user.is_active else 'Inactive' }}
+                    </span>
+                </td>
+            </tr>
+            {% endfor %}
+            {% else %}
+            <tr>
+                <td colspan="4" style="text-align: center; color: var(--text-light); padding: 1.5rem;">
+                    No users
+                </td>
+            </tr>
+            {% endif %}
+        </tbody>
+    </table>
+</div>
+
+<div style="margin-top: 1.5rem;">
+    <a href="{{ url_for('admin.tenants') }}" class="btn btn-outline">&larr; Back to Tenants</a>
+</div>
+{% endblock %}

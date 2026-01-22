@@ -1,0 +1,150 @@
+{% extends "admin/base.html" %}
+
+{% block title %}{{ 'Edit' if tenant else 'Add' }} Client - AppointMint{% endblock %}
+
+{% block admin_content %}
+<div class="page-header">
+    <div>
+        <h1 class="page-title">{{ 'Edit' if tenant else 'Add' }} Client</h1>
+        <p class="page-subtitle">{{ 'Update client organization details' if tenant else 'Create a new client organization' }}</p>
+    </div>
+    <a href="{{ url_for('admin.tenants') }}" class="btn btn-outline-secondary">
+        <i class="fas fa-arrow-left me-2"></i>Back to Clients
+    </a>
+</div>
+
+<div class="row">
+    <div class="col-lg-8">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="card-title mb-0">Organization Information</h5>
+            </div>
+            <div class="card-body">
+                <form method="POST">
+                    <div class="row g-3">
+                        <div class="col-12">
+                            <label class="form-label">Company Name <span class="text-danger">*</span></label>
+                            <input type="text" name="name" class="form-control" value="{{ tenant.name if tenant else '' }}" required>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Contact Email <span class="text-danger">*</span></label>
+                            <input type="email" name="email" class="form-control" value="{{ tenant.email if tenant else '' }}" required>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Phone Number</label>
+                            <input type="tel" name="phone" class="form-control" value="{{ tenant.phone if tenant else '' }}">
+                        </div>
+                    </div>
+                    
+                    <hr class="my-4">
+                    
+                    <h6 class="mb-3">Subscription Settings</h6>
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="form-label">Subscription Plan</label>
+                            <select name="subscription_plan" class="form-select">
+                                <option value="starter" {{ 'selected' if not tenant or tenant.subscription_plan == 'starter' else '' }}>Starter</option>
+                                <option value="professional" {{ 'selected' if tenant and tenant.subscription_plan == 'professional' else '' }}>Professional</option>
+                                <option value="enterprise" {{ 'selected' if tenant and tenant.subscription_plan == 'enterprise' else '' }}>Enterprise</option>
+                            </select>
+                        </div>
+                        {% if tenant %}
+                        <div class="col-md-6">
+                            <label class="form-label">Subscription Status</label>
+                            <select name="subscription_status" class="form-select">
+                                <option value="active" {{ 'selected' if tenant.subscription_status == 'active' else '' }}>Active</option>
+                                <option value="trial" {{ 'selected' if tenant.subscription_status == 'trial' else '' }}>Trial</option>
+                                <option value="suspended" {{ 'selected' if tenant.subscription_status == 'suspended' else '' }}>Suspended</option>
+                                <option value="cancelled" {{ 'selected' if tenant.subscription_status == 'cancelled' else '' }}>Cancelled</option>
+                            </select>
+                        </div>
+                        {% endif %}
+                    </div>
+                    
+                    <hr class="my-4">
+                    
+                    <div class="d-flex gap-2">
+                        <button type="submit" class="btn btn-primary">
+                            <i class="fas fa-save me-2"></i>{{ 'Update' if tenant else 'Add' }} Client
+                        </button>
+                        <a href="{{ url_for('admin.tenants') }}" class="btn btn-outline-secondary">Cancel</a>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-lg-4">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="card-title mb-0">Subscription Plans</h5>
+            </div>
+            <div class="card-body">
+                <div class="plan-info mb-3">
+                    <h6><i class="fas fa-rocket me-2 text-info"></i>Starter</h6>
+                    <ul class="small text-muted mb-0">
+                        <li>3 Restaurants</li>
+                        <li>Voice AI Assistant</li>
+                        <li>Up to 500 reservations/month</li>
+                    </ul>
+                </div>
+                <div class="plan-info mb-3">
+                    <h6><i class="fas fa-star me-2 text-warning"></i>Professional</h6>
+                    <ul class="small text-muted mb-0">
+                        <li>10 Restaurants</li>
+                        <li>Advanced AI Features</li>
+                        <li>Unlimited reservations</li>
+                    </ul>
+                </div>
+                <div class="plan-info">
+                    <h6><i class="fas fa-crown me-2 text-primary"></i>Enterprise</h6>
+                    <ul class="small text-muted mb-0">
+                        <li>Unlimited Restaurants</li>
+                        <li>Custom AI Training</li>
+                        <li>Priority Support</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+        
+        {% if tenant %}
+        <div class="card mt-4">
+            <div class="card-header">
+                <h5 class="card-title mb-0">Quick Stats</h5>
+            </div>
+            <div class="card-body">
+                <div class="d-flex justify-content-between mb-2">
+                    <span class="text-muted">Restaurants</span>
+                    <span class="fw-semibold">{{ tenant.restaurants|length }}</span>
+                </div>
+                <div class="d-flex justify-content-between mb-2">
+                    <span class="text-muted">Users</span>
+                    <span class="fw-semibold">{{ tenant.users|length }}</span>
+                </div>
+                <div class="d-flex justify-content-between">
+                    <span class="text-muted">Created</span>
+                    <span class="fw-semibold">{{ tenant.created_at.strftime('%b %d, %Y') }}</span>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<style>
+.plan-info {
+    padding: 1rem;
+    background: #f8fafc;
+    border-radius: 8px;
+}
+
+.plan-info ul {
+    padding-left: 1.25rem;
+    margin-top: 0.5rem;
+}
+
+.plan-info li {
+    margin-bottom: 0.25rem;
+}
+</style>
+{% endblock %}

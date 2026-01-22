@@ -1,0 +1,160 @@
+{% extends "admin/base.html" %}
+
+{% block title %}{{ 'Edit User' if user else 'Add User' }} - AppointMint{% endblock %}
+
+{% block admin_content %}
+<div class="page-header">
+    <div>
+        <h1 class="page-title">{{ 'Edit User' if user else 'Add User' }}</h1>
+        <p class="page-subtitle">{{ 'Update user information' if user else 'Create a new user account' }}</p>
+    </div>
+    <a href="{{ url_for('admin.users') }}" class="btn btn-outline-secondary">
+        <i class="fas fa-arrow-left me-2"></i>Back to Users
+    </a>
+</div>
+
+<div class="row">
+    <div class="col-lg-8">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="card-title mb-0">User Information</h5>
+            </div>
+            <div class="card-body">
+                <form method="POST" action="">
+                    {% if current_user.is_admin() and tenants %}
+                    <div class="mb-3">
+                        <label class="form-label">Client (Tenant)</label>
+                        <select name="tenant_id" class="form-select">
+                            <option value="">-- System Level (No Tenant) --</option>
+                            {% for tenant in tenants %}
+                            <option value="{{ tenant.id }}" {% if user and user.tenant_id == tenant.id %}selected{% endif %}>
+                                {{ tenant.name }}
+                            </option>
+                            {% endfor %}
+                        </select>
+                        <div class="form-text">Select the client this user belongs to, or leave empty for system-level users.</div>
+                    </div>
+                    {% endif %}
+                    
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="form-label">First Name <span class="text-danger">*</span></label>
+                            <input type="text" name="first_name" class="form-control" value="{{ user.first_name if user else '' }}" required>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Last Name <span class="text-danger">*</span></label>
+                            <input type="text" name="last_name" class="form-control" value="{{ user.last_name if user else '' }}" required>
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label">Email Address <span class="text-danger">*</span></label>
+                            <input type="email" name="email" class="form-control" value="{{ user.email if user else '' }}" {% if user %}readonly{% endif %} required>
+                            {% if user %}
+                            <div class="form-text">Email cannot be changed after account creation.</div>
+                            {% endif %}
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label">Password {% if not user %}<span class="text-danger">*</span>{% endif %}</label>
+                            <input type="password" name="password" class="form-control" {% if not user %}required{% endif %} minlength="6">
+                            {% if user %}
+                            <div class="form-text">Leave blank to keep current password.</div>
+                            {% else %}
+                            <div class="form-text">Minimum 6 characters.</div>
+                            {% endif %}
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Role <span class="text-danger">*</span></label>
+                            <select name="role" class="form-select" required>
+                                {% if current_user.is_admin() %}
+                                <option value="admin" {% if user and user.role == 'admin' %}selected{% endif %}>
+                                    System Administrator
+                                </option>
+                                {% endif %}
+                                <option value="tenant_superuser" {% if user and user.role == 'tenant_superuser' %}selected{% endif %}>
+                                    {% if current_user.is_admin() %}Tenant Superuser{% else %}Organization Admin{% endif %}
+                                </option>
+                                <option value="tenant_user" {% if (user and user.role == 'tenant_user') or not user %}selected{% endif %}>
+                                    {% if current_user.is_admin() %}Tenant User{% else %}Team Member{% endif %}
+                                </option>
+                            </select>
+                        </div>
+                        
+                        {% if user %}
+                        <div class="col-md-6 d-flex align-items-end">
+                            <div class="form-check form-switch">
+                                <input type="checkbox" name="is_active" class="form-check-input" id="isActive" {% if user.is_active %}checked{% endif %}>
+                                <label class="form-check-label" for="isActive">Active Account</label>
+                            </div>
+                        </div>
+                        {% endif %}
+                    </div>
+                    
+                    <hr class="my-4">
+                    
+                    <div class="d-flex gap-2">
+                        <button type="submit" class="btn btn-primary">
+                            <i class="fas fa-save me-2"></i>{{ 'Update User' if user else 'Add User' }}
+                        </button>
+                        <a href="{{ url_for('admin.users') }}" class="btn btn-outline-secondary">Cancel</a>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-lg-4">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="card-title mb-0">Role Permissions</h5>
+            </div>
+            <div class="card-body">
+                {% if current_user.is_admin() %}
+                <div class="role-info mb-3">
+                    <h6 class="text-danger"><i class="fas fa-crown me-2"></i>System Administrator</h6>
+                    <ul class="small text-muted mb-0">
+                        <li>Full access to all tenants</li>
+                        <li>Manage system settings</li>
+                        <li>Create/manage all users</li>
+                    </ul>
+                </div>
+                {% endif %}
+                <div class="role-info mb-3">
+                    <h6 class="text-primary"><i class="fas fa-user-shield me-2"></i>{% if current_user.is_admin() %}Tenant Superuser{% else %}Organization Admin{% endif %}</h6>
+                    <ul class="small text-muted mb-0">
+                        <li>Manage organization settings</li>
+                        <li>Add/edit restaurants</li>
+                        <li>Manage team members</li>
+                        <li>View all reservations</li>
+                        <li>Access AI assistant settings</li>
+                    </ul>
+                </div>
+                <div class="role-info">
+                    <h6 class="text-secondary"><i class="fas fa-user me-2"></i>{% if current_user.is_admin() %}Tenant User{% else %}Team Member{% endif %}</h6>
+                    <ul class="small text-muted mb-0">
+                        <li>View organization info</li>
+                        <li>View restaurants</li>
+                        <li>View reservations</li>
+                        <li>Use AI assistant</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+.role-info {
+    padding: 1rem;
+    background: #f8fafc;
+    border-radius: 8px;
+}
+
+.role-info ul {
+    padding-left: 1.25rem;
+    margin-top: 0.5rem;
+}
+
+.role-info li {
+    margin-bottom: 0.25rem;
+}
+</style>
+{% endblock %}

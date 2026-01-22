@@ -1,0 +1,390 @@
+{% extends "admin/base.html" %}
+
+{% block title %}Dashboard{% endblock %}
+
+{% block admin_content %}
+{% if current_user.tenant and current_user.tenant.is_trial %}
+<div class="trial-banner mb-4">
+    <div class="trial-info">
+        <div class="trial-icon">
+            <i class="fas fa-clock"></i>
+        </div>
+        <div class="trial-text">
+            <h4>Free Trial</h4>
+            <p>
+                {% if current_user.tenant.trial_days_remaining > 0 %}
+                <strong>{{ current_user.tenant.trial_days_remaining }} days</strong> remaining
+                {% else %}
+                Trial period ended
+                {% endif %}
+                •
+                {% if current_user.tenant.trial_bookings_remaining > 0 %}
+                <strong>{{ current_user.tenant.trial_bookings_remaining }}</strong> test bookings left
+                {% else %}
+                No test bookings remaining
+                {% endif %}
+            </p>
+        </div>
+        <a href="{% if restaurants %}{{ url_for('billing.go_live', restaurant_id=restaurants[0].id) }}{% else %}#{% endif %}" class="btn btn-warning btn-sm">
+            <i class="fas fa-rocket me-1"></i>Upgrade Now
+        </a>
+    </div>
+</div>
+<style>
+.trial-banner {
+    background: linear-gradient(135deg, #fef3c7, #fde68a);
+    border-radius: 12px;
+    padding: 1rem 1.5rem;
+}
+.trial-info {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+}
+.trial-icon {
+    width: 48px;
+    height: 48px;
+    background: #f59e0b;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    font-size: 1.25rem;
+    flex-shrink: 0;
+}
+.trial-text {
+    flex: 1;
+}
+.trial-text h4 {
+    margin: 0;
+    color: #92400e;
+    font-size: 1rem;
+}
+.trial-text p {
+    margin: 0.25rem 0 0;
+    color: #b45309;
+    font-size: 0.9rem;
+}
+</style>
+{% endif %}
+
+<div class="page-header">
+    <div>
+        <h1 class="page-title">Dashboard</h1>
+        <p class="page-subtitle">Welcome back, {{ current_user.name or 'User' }}! Here's what's happening.</p>
+    </div>
+    <div class="d-flex gap-2">
+        <button class="btn btn-light">
+            <i class="fas fa-download me-2"></i>Export
+        </button>
+        <a href="{{ url_for('admin.add_restaurant') }}" class="btn btn-primary">
+            <i class="fas fa-plus me-2"></i>Add Restaurant
+        </a>
+    </div>
+</div>
+
+<!-- Stats Row -->
+<div class="row g-4 mb-4">
+    <div class="col-md-6 col-xl-3">
+        <div class="stat-card">
+            <div class="stat-icon primary">
+                <i class="fas fa-utensils"></i>
+            </div>
+            <div class="stat-value">{{ total_restaurants or 0 }}</div>
+            <div class="stat-label">Total Restaurants</div>
+            <div class="stat-change up">
+                <i class="fas fa-arrow-up"></i>
+                <span>Active</span>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6 col-xl-3">
+        <div class="stat-card success">
+            <div class="stat-icon success">
+                <i class="fas fa-calendar-check"></i>
+            </div>
+            <div class="stat-value">{{ total_reservations or 0 }}</div>
+            <div class="stat-label">Total Reservations</div>
+            <div class="stat-change up">
+                <i class="fas fa-arrow-up"></i>
+                <span>12% this week</span>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6 col-xl-3">
+        <div class="stat-card warning">
+            <div class="stat-icon warning">
+                <i class="fas fa-clock"></i>
+            </div>
+            <div class="stat-value">{{ today_reservations or 0 }}</div>
+            <div class="stat-label">Today's Bookings</div>
+            <div class="stat-change up">
+                <i class="fas fa-arrow-up"></i>
+                <span>Needs attention</span>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6 col-xl-3">
+        <div class="stat-card info">
+            <div class="stat-icon info">
+                <i class="fas fa-robot"></i>
+            </div>
+            <div class="stat-value">{{ ai_conversations or 0 }}</div>
+            <div class="stat-label">AI Conversations</div>
+            <div class="stat-change up">
+                <i class="fas fa-arrow-up"></i>
+                <span>Active</span>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Charts Row -->
+<div class="row g-4 mb-4">
+    <!-- Reservations Chart -->
+    <div class="col-lg-8">
+        <div class="card h-100">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="card-title">Reservations Overview</h5>
+                <div class="btn-group btn-group-sm">
+                    <button class="btn btn-light active">Week</button>
+                    <button class="btn btn-light">Month</button>
+                    <button class="btn btn-light">Year</button>
+                </div>
+            </div>
+            <div class="card-body">
+                <div class="chart-container">
+                    <canvas id="reservationsChart"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Booking Sources -->
+    <div class="col-lg-4">
+        <div class="card h-100">
+            <div class="card-header">
+                <h5 class="card-title">Booking Sources</h5>
+            </div>
+            <div class="card-body d-flex flex-column align-items-center justify-content-center">
+                <div style="width: 180px; height: 180px; position: relative;">
+                    <canvas id="sourcesChart"></canvas>
+                </div>
+                <div class="mt-4 w-100">
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <div class="d-flex align-items-center gap-2">
+                            <span style="width: 12px; height: 12px; border-radius: 3px; background: #2D8B7A;"></span>
+                            <span class="text-secondary">AI Assistant</span>
+                        </div>
+                        <span class="fw-semibold">65%</span>
+                    </div>
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <div class="d-flex align-items-center gap-2">
+                            <span style="width: 12px; height: 12px; border-radius: 3px; background: #4ECDC4;"></span>
+                            <span class="text-secondary">Phone</span>
+                        </div>
+                        <span class="fw-semibold">25%</span>
+                    </div>
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div class="d-flex align-items-center gap-2">
+                            <span style="width: 12px; height: 12px; border-radius: 3px; background: #A8E6CF;"></span>
+                            <span class="text-secondary">Walk-in</span>
+                        </div>
+                        <span class="fw-semibold">10%</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Bottom Row -->
+<div class="row g-4">
+    <!-- Recent Reservations -->
+    <div class="col-lg-8">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="card-title">Recent Reservations</h5>
+                <a href="{{ url_for('admin.reservations') }}" class="btn btn-sm btn-outline-primary">View All</a>
+            </div>
+            <div class="card-body p-0">
+                {% if recent_reservations %}
+                <div class="table-responsive">
+                    <table class="table">
+                        <thead>
+                            <tr>
+                                <th>Customer</th>
+                                <th>Restaurant</th>
+                                <th>Date & Time</th>
+                                <th>Guests</th>
+                                <th>Status</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for reservation in recent_reservations[:5] %}
+                            <tr>
+                                <td>
+                                    <div class="d-flex align-items-center gap-3">
+                                        <div class="user-avatar" style="width: 36px; height: 36px; font-size: 12px;">
+                                            {{ reservation.customer_name[0]|upper if reservation.customer_name else 'G' }}
+                                        </div>
+                                        <div>
+                                            <div class="fw-semibold">{{ reservation.customer_name }}</div>
+                                            <div class="text-muted small">{{ reservation.customer_phone or reservation.customer_email or 'No contact' }}</div>
+                                        </div>
+                                    </div>
+                                </td>
+                                <td>{{ reservation.restaurant.name if reservation.restaurant else 'N/A' }}</td>
+                                <td>
+                                    <div>{{ reservation.reservation_date.strftime('%b %d, %Y') }}</div>
+                                    <div class="text-muted small">{{ reservation.reservation_time.strftime('%H:%M') if reservation.reservation_time else 'N/A' }}</div>
+                                </td>
+                                <td>{{ reservation.party_size }}</td>
+                                <td>
+                                    {% if reservation.status == 'confirmed' %}
+                                    <span class="badge bg-success">Confirmed</span>
+                                    {% elif reservation.status == 'pending' %}
+                                    <span class="badge bg-warning">Pending</span>
+                                    {% elif reservation.status == 'cancelled' %}
+                                    <span class="badge bg-danger">Cancelled</span>
+                                    {% else %}
+                                    <span class="badge bg-info">{{ reservation.status|title }}</span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <div class="empty-state">
+                    <div class="empty-state-icon">
+                        <i class="fas fa-calendar-alt"></i>
+                    </div>
+                    <div class="empty-state-title">No reservations yet</div>
+                    <div class="empty-state-text">Reservations will appear here once customers start booking.</div>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    
+    <!-- Quick Actions & Performance -->
+    <div class="col-lg-4">
+        <!-- Performance Ring -->
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5 class="card-title">Booking Rate</h5>
+            </div>
+            <div class="card-body d-flex flex-column align-items-center">
+                <div class="progress-ring">
+                    <svg width="120" height="120">
+                        <circle class="progress-ring-circle" cx="60" cy="60" r="52"></circle>
+                        <circle class="progress-ring-progress" cx="60" cy="60" r="52" 
+                                stroke-dasharray="327" stroke-dashoffset="82"></circle>
+                    </svg>
+                    <div class="progress-ring-value">75%</div>
+                </div>
+                <p class="text-muted mt-3 text-center">Conversion rate from AI conversations to confirmed bookings</p>
+            </div>
+        </div>
+        
+        <!-- Quick Actions -->
+        <div class="card">
+            <div class="card-header">
+                <h5 class="card-title">Quick Actions</h5>
+            </div>
+            <div class="card-body">
+                <div class="d-grid gap-2">
+                    <a href="{{ url_for('admin.add_restaurant') }}" class="btn btn-light text-start">
+                        <i class="fas fa-plus me-2 text-primary"></i>Add New Restaurant
+                    </a>
+                    <a href="{{ url_for('admin.reservations') }}" class="btn btn-light text-start">
+                        <i class="fas fa-calendar-plus me-2 text-success"></i>View Reservations
+                    </a>
+                    <a href="{{ url_for('admin.conversations') }}" class="btn btn-light text-start">
+                        <i class="fas fa-comments me-2 text-info"></i>AI Conversations
+                    </a>
+                    <a href="{{ url_for('admin.settings') }}" class="btn btn-light text-start">
+                        <i class="fas fa-cog me-2 text-secondary"></i>Settings
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // Reservations Line Chart
+    const reservationsCtx = document.getElementById('reservationsChart').getContext('2d');
+    new Chart(reservationsCtx, {
+        type: 'line',
+        data: {
+            labels: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
+            datasets: [{
+                label: 'Reservations',
+                data: [12, 19, 15, 25, 22, 30, 28],
+                borderColor: '#2D8B7A',
+                backgroundColor: 'rgba(45, 139, 122, 0.1)',
+                fill: true,
+                tension: 0.4,
+                borderWidth: 2,
+                pointBackgroundColor: '#2D8B7A',
+                pointBorderColor: '#fff',
+                pointBorderWidth: 2,
+                pointRadius: 4,
+                pointHoverRadius: 6
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    display: false
+                }
+            },
+            scales: {
+                x: {
+                    grid: {
+                        display: false
+                    }
+                },
+                y: {
+                    beginAtZero: true,
+                    grid: {
+                        color: '#E5E7EB'
+                    }
+                }
+            }
+        }
+    });
+    
+    // Booking Sources Doughnut Chart
+    const sourcesCtx = document.getElementById('sourcesChart').getContext('2d');
+    new Chart(sourcesCtx, {
+        type: 'doughnut',
+        data: {
+            labels: ['AI Assistant', 'Phone', 'Walk-in'],
+            datasets: [{
+                data: [65, 25, 10],
+                backgroundColor: ['#2D8B7A', '#4ECDC4', '#A8E6CF'],
+                borderWidth: 0,
+                cutout: '70%'
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: true,
+            plugins: {
+                legend: {
+                    display: false
+                }
+            }
+        }
+    });
+</script>
+{% endblock %}

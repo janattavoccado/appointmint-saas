@@ -1,0 +1,347 @@
+{% extends "admin/base.html" %}
+
+{% block title %}Knowledge Base - {{ restaurant.name }} - AppointMint{% endblock %}
+
+{% block admin_content %}
+<div class="page-header">
+    <div>
+        <nav aria-label="breadcrumb">
+            <ol class="breadcrumb mb-2">
+                <li class="breadcrumb-item"><a href="{{ url_for('admin.restaurants') }}">Restaurants</a></li>
+                <li class="breadcrumb-item"><a href="{{ url_for('admin.restaurant_detail', id=restaurant.id) }}">{{ restaurant.name }}</a></li>
+                <li class="breadcrumb-item active">Knowledge Base</li>
+            </ol>
+        </nav>
+        <h1 class="page-title">Knowledge Base</h1>
+        <p class="page-subtitle">Manage FAQ, menu, hours, and other information for the AI assistant</p>
+    </div>
+    <div class="d-flex gap-2">
+        {% if restaurant.knowledge_base %}
+        <a href="{{ url_for('admin.download_knowledge_base', id=restaurant.id) }}" class="btn btn-outline-primary">
+            <i class="fas fa-download me-2"></i>Download
+        </a>
+        {% endif %}
+        <a href="{{ url_for('admin.restaurant_detail', id=restaurant.id) }}" class="btn btn-outline-secondary">
+            <i class="fas fa-arrow-left me-2"></i>Back
+        </a>
+    </div>
+</div>
+
+<div class="row g-4">
+    <!-- Editor Section -->
+    <div class="col-lg-8">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <div>
+                    <h5 class="card-title mb-0">Edit Knowledge Base</h5>
+                    <small class="text-muted">Use Markdown format for formatting</small>
+                </div>
+                <div class="btn-group" role="group">
+                    <button type="button" class="btn btn-sm btn-outline-secondary" id="previewBtn">
+                        <i class="fas fa-eye me-1"></i>Preview
+                    </button>
+                    <button type="button" class="btn btn-sm btn-outline-secondary" id="editBtn" style="display: none;">
+                        <i class="fas fa-edit me-1"></i>Edit
+                    </button>
+                </div>
+            </div>
+            <div class="card-body">
+                <form method="POST" id="knowledgeForm">
+                    <div id="editorContainer">
+                        <textarea name="knowledge_base" id="knowledgeEditor" class="form-control" rows="25" 
+                                  placeholder="Enter your restaurant's knowledge base in Markdown format...">{{ restaurant.knowledge_base or '' }}</textarea>
+                    </div>
+                    <div id="previewContainer" style="display: none;">
+                        <div class="markdown-preview p-3 border rounded bg-light" id="markdownPreview"></div>
+                    </div>
+                    <div class="mt-3 d-flex justify-content-between">
+                        <button type="submit" class="btn btn-primary">
+                            <i class="fas fa-save me-2"></i>Save Changes
+                        </button>
+                        {% if restaurant.knowledge_base_updated_at %}
+                        <small class="text-muted align-self-center">
+                            Last updated: {{ restaurant.knowledge_base_updated_at.strftime('%b %d, %Y at %H:%M') }}
+                        </small>
+                        {% endif %}
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Sidebar -->
+    <div class="col-lg-4">
+        <!-- Upload Card -->
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5 class="card-title mb-0">Upload Markdown File</h5>
+            </div>
+            <div class="card-body">
+                <form method="POST" enctype="multipart/form-data" id="uploadForm">
+                    <div class="mb-3">
+                        <label class="form-label">Select .md file</label>
+                        <input type="file" class="form-control" name="knowledge_file" accept=".md,.markdown,.txt" id="fileInput">
+                    </div>
+                    <button type="submit" class="btn btn-outline-primary w-100">
+                        <i class="fas fa-upload me-2"></i>Upload File
+                    </button>
+                </form>
+            </div>
+        </div>
+        
+        <!-- Template Card -->
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5 class="card-title mb-0">Use Template</h5>
+            </div>
+            <div class="card-body">
+                <p class="text-muted small">Start with a pre-built template that includes common sections for restaurant information.</p>
+                <button type="button" class="btn btn-outline-success w-100" id="useTemplateBtn">
+                    <i class="fas fa-file-alt me-2"></i>Load Template
+                </button>
+            </div>
+        </div>
+        
+        <!-- Tips Card -->
+        <div class="card">
+            <div class="card-header">
+                <h5 class="card-title mb-0">Tips</h5>
+            </div>
+            <div class="card-body">
+                <div class="tips-list">
+                    <div class="tip-item">
+                        <i class="fas fa-lightbulb text-warning me-2"></i>
+                        <span>Use <code># Heading</code> for main sections</span>
+                    </div>
+                    <div class="tip-item">
+                        <i class="fas fa-lightbulb text-warning me-2"></i>
+                        <span>Use <code>## Subheading</code> for subsections</span>
+                    </div>
+                    <div class="tip-item">
+                        <i class="fas fa-lightbulb text-warning me-2"></i>
+                        <span>Use <code>- item</code> for bullet lists</span>
+                    </div>
+                    <div class="tip-item">
+                        <i class="fas fa-lightbulb text-warning me-2"></i>
+                        <span>Use <code>**bold**</code> for emphasis</span>
+                    </div>
+                    <div class="tip-item">
+                        <i class="fas fa-lightbulb text-warning me-2"></i>
+                        <span>Include FAQ section for common questions</span>
+                    </div>
+                    <div class="tip-item">
+                        <i class="fas fa-lightbulb text-warning me-2"></i>
+                        <span>Add menu items with prices</span>
+                    </div>
+                    <div class="tip-item">
+                        <i class="fas fa-lightbulb text-warning me-2"></i>
+                        <span>Include hours and location details</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+#knowledgeEditor {
+    font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+    font-size: 0.875rem;
+    line-height: 1.6;
+    resize: vertical;
+    min-height: 400px;
+}
+
+.markdown-preview {
+    min-height: 400px;
+    max-height: 600px;
+    overflow-y: auto;
+}
+
+.markdown-preview h1 {
+    font-size: 1.75rem;
+    border-bottom: 2px solid #e2e8f0;
+    padding-bottom: 0.5rem;
+    margin-bottom: 1rem;
+}
+
+.markdown-preview h2 {
+    font-size: 1.5rem;
+    border-bottom: 1px solid #e2e8f0;
+    padding-bottom: 0.25rem;
+    margin-top: 1.5rem;
+    margin-bottom: 0.75rem;
+}
+
+.markdown-preview h3 {
+    font-size: 1.25rem;
+    margin-top: 1.25rem;
+    margin-bottom: 0.5rem;
+}
+
+.markdown-preview ul, .markdown-preview ol {
+    padding-left: 1.5rem;
+}
+
+.markdown-preview table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 1rem 0;
+}
+
+.markdown-preview th, .markdown-preview td {
+    border: 1px solid #e2e8f0;
+    padding: 0.5rem;
+    text-align: left;
+}
+
+.markdown-preview th {
+    background: #f8fafc;
+    font-weight: 600;
+}
+
+.markdown-preview code {
+    background: #f1f5f9;
+    padding: 0.125rem 0.375rem;
+    border-radius: 0.25rem;
+    font-size: 0.875em;
+}
+
+.markdown-preview blockquote {
+    border-left: 4px solid #2D8B7A;
+    padding-left: 1rem;
+    margin-left: 0;
+    color: #64748b;
+}
+
+.tips-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+.tip-item {
+    display: flex;
+    align-items: flex-start;
+    font-size: 0.875rem;
+}
+
+.tip-item code {
+    background: #f1f5f9;
+    padding: 0.125rem 0.375rem;
+    border-radius: 0.25rem;
+    font-size: 0.8125rem;
+}
+</style>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const editor = document.getElementById('knowledgeEditor');
+    const editorContainer = document.getElementById('editorContainer');
+    const previewContainer = document.getElementById('previewContainer');
+    const previewBtn = document.getElementById('previewBtn');
+    const editBtn = document.getElementById('editBtn');
+    const markdownPreview = document.getElementById('markdownPreview');
+    const useTemplateBtn = document.getElementById('useTemplateBtn');
+    
+    // Sample template
+    const sampleTemplate = {{ sample_template | tojson }};
+    
+    // Toggle preview
+    previewBtn.addEventListener('click', function() {
+        editorContainer.style.display = 'none';
+        previewContainer.style.display = 'block';
+        previewBtn.style.display = 'none';
+        editBtn.style.display = 'inline-block';
+        
+        // Simple markdown to HTML conversion
+        markdownPreview.innerHTML = convertMarkdownToHtml(editor.value);
+    });
+    
+    editBtn.addEventListener('click', function() {
+        editorContainer.style.display = 'block';
+        previewContainer.style.display = 'none';
+        previewBtn.style.display = 'inline-block';
+        editBtn.style.display = 'none';
+    });
+    
+    // Use template
+    useTemplateBtn.addEventListener('click', function() {
+        if (editor.value.trim() && !confirm('This will replace your current content. Continue?')) {
+            return;
+        }
+        editor.value = sampleTemplate;
+    });
+    
+    // Simple markdown to HTML converter
+    function convertMarkdownToHtml(markdown) {
+        if (!markdown) return '<p class="text-muted">No content yet. Start typing or use the template.</p>';
+        
+        let html = markdown
+            // Escape HTML
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            // Headers
+            .replace(/^### (.*$)/gim, '<h3>$1</h3>')
+            .replace(/^## (.*$)/gim, '<h2>$1</h2>')
+            .replace(/^# (.*$)/gim, '<h1>$1</h1>')
+            // Bold
+            .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+            // Italic
+            .replace(/\*(.*?)\*/g, '<em>$1</em>')
+            // Code
+            .replace(/`(.*?)`/g, '<code>$1</code>')
+            // Links
+            .replace(/\[(.*?)\]\((.*?)\)/g, '<a href="$2" target="_blank">$1</a>')
+            // Unordered lists
+            .replace(/^\- (.*$)/gim, '<li>$1</li>')
+            // Line breaks
+            .replace(/\n\n/g, '</p><p>')
+            .replace(/\n/g, '<br>');
+        
+        // Wrap in paragraph
+        html = '<p>' + html + '</p>';
+        
+        // Fix list items
+        html = html.replace(/(<li>.*<\/li>)/g, '<ul>$1</ul>');
+        html = html.replace(/<\/ul><ul>/g, '');
+        
+        // Handle tables (basic)
+        const tableRegex = /\|(.+)\|\n\|[-|]+\|\n((?:\|.+\|\n?)+)/g;
+        html = html.replace(tableRegex, function(match, header, body) {
+            const headers = header.split('|').filter(h => h.trim());
+            const rows = body.trim().split('\n').map(row => 
+                row.split('|').filter(c => c.trim())
+            );
+            
+            let table = '<table><thead><tr>';
+            headers.forEach(h => table += `<th>${h.trim()}</th>`);
+            table += '</tr></thead><tbody>';
+            rows.forEach(row => {
+                table += '<tr>';
+                row.forEach(cell => table += `<td>${cell.trim()}</td>`);
+                table += '</tr>';
+            });
+            table += '</tbody></table>';
+            return table;
+        });
+        
+        return html;
+    }
+    
+    // File upload validation
+    document.getElementById('fileInput').addEventListener('change', function(e) {
+        const file = e.target.files[0];
+        if (file) {
+            const validExtensions = ['.md', '.markdown', '.txt'];
+            const ext = file.name.substring(file.name.lastIndexOf('.')).toLowerCase();
+            if (!validExtensions.includes(ext)) {
+                alert('Please select a Markdown file (.md, .markdown, or .txt)');
+                e.target.value = '';
+            }
+        }
+    });
+});
+</script>
+{% endblock %}

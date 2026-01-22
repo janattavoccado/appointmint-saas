@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+
+{% block title %}About{% endblock %}
+
+{% block content %}
+<section class="hero" style="min-height: auto; padding: 10rem 2rem 4rem;">
+    <div class="hero-container">
+        <h1 class="hero-title" style="font-size: 2.75rem;">
+            About <span class="text-gradient">AppointMint</span>
+        </h1>
+        <p class="hero-subtitle">
+            We're on a mission to revolutionize how restaurants handle reservations through the power of AI.
+        </p>
+    </div>
+</section>
+
+<section class="section-container">
+    <div style="max-width: 800px; margin: 0 auto;">
+        <h2 style="font-size: 1.75rem; font-weight: 700; margin-bottom: 1.5rem; color: var(--secondary-color);">Our Story</h2>
+        <p style="color: var(--text-light); line-height: 1.8; margin-bottom: 1.5rem;">
+            AppointMint was born from a simple observation: restaurant staff spend countless hours on the phone taking reservations, answering the same questions, and managing bookings manually. Meanwhile, customers often struggle to reach restaurants during busy hours or get frustrated with complicated online booking systems.
+        </p>
+        <p style="color: var(--text-light); line-height: 1.8; margin-bottom: 1.5rem;">
+            We believed there had to be a better way. By combining cutting-edge AI technology with deep understanding of the hospitality industry, we created AppointMint – a voice-enabled AI concierge that handles reservations naturally, just like a human would, but available 24/7.
+        </p>
+        <p style="color: var(--text-light); line-height: 1.8; margin-bottom: 3rem;">
+            Today, AppointMint helps hundreds of restaurants across the country save time, reduce no-shows, and provide a better experience for their guests. Our AI handles thousands of conversations every day, learning and improving to serve restaurants and their customers better.
+        </p>
+        
+        <h2 style="font-size: 1.75rem; font-weight: 700; margin-bottom: 1.5rem; color: var(--secondary-color);">Our Values</h2>
+        
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 2rem; margin-bottom: 3rem;">
+            <div>
+                <h4 style="font-size: 1.125rem; font-weight: 600; margin-bottom: 0.5rem; color: var(--primary-color);">Innovation</h4>
+                <p style="color: var(--text-light); line-height: 1.7;">We constantly push the boundaries of what's possible with AI to create solutions that truly make a difference.</p>
+            </div>
+            <div>
+                <h4 style="font-size: 1.125rem; font-weight: 600; margin-bottom: 0.5rem; color: var(--primary-color);">Simplicity</h4>
+                <p style="color: var(--text-light); line-height: 1.7;">Technology should make things easier, not harder. We design our products to be intuitive and effortless to use.</p>
+            </div>
+            <div>
+                <h4 style="font-size: 1.125rem; font-weight: 600; margin-bottom: 0.5rem; color: var(--primary-color);">Reliability</h4>
+                <p style="color: var(--text-light); line-height: 1.7;">Restaurants depend on us for their operations. We take that responsibility seriously with 99.9% uptime.</p>
+            </div>
+            <div>
+                <h4 style="font-size: 1.125rem; font-weight: 600; margin-bottom: 0.5rem; color: var(--primary-color);">Partnership</h4>
+                <p style="color: var(--text-light); line-height: 1.7;">We see ourselves as partners in our customers' success, not just a software vendor.</p>
+            </div>
+        </div>
+        
+        <h2 style="font-size: 1.75rem; font-weight: 700; margin-bottom: 1.5rem; color: var(--secondary-color);">Contact Us</h2>
+        <p style="color: var(--text-light); line-height: 1.8; margin-bottom: 1rem;">
+            Have questions? We'd love to hear from you.
+        </p>
+        <p style="margin-bottom: 0.5rem;"><strong>Email:</strong> <a href="mailto:hello@appointmint.com" style="color: var(--primary-color);">hello@appointmint.com</a></p>
+        <p style="margin-bottom: 0.5rem;"><strong>Phone:</strong> +1 (555) 123-4567</p>
+        <p><strong>Address:</strong> 123 Innovation Way, San Francisco, CA 94105</p>
+    </div>
+</section>
+
+<section class="cta-section">
+    <div class="section-container">
+        <h2>Join the Future of Reservations</h2>
+        <p>Start your free trial today and see why restaurants love AppointMint.</p>
+        <a href="{{ url_for('auth.register') }}" class="btn btn-primary btn-lg">Start Free Trial</a>
+    </div>
+</section>
+{% endblock %}

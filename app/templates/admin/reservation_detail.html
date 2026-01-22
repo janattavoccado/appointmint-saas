@@ -1,0 +1,630 @@
+{% extends "admin/base.html" %}
+
+{% block title %}Reservation #{{ reservation.id }} - AppointMint{% endblock %}
+
+{% block admin_content %}
+<!-- Page Header with Breadcrumb -->
+<div class="page-header">
+    <div>
+        <nav aria-label="breadcrumb">
+            <ol class="breadcrumb mb-2">
+                <li class="breadcrumb-item"><a href="{{ url_for('admin.reservations') }}">Reservations</a></li>
+                <li class="breadcrumb-item active">Reservation #{{ reservation.id }}</li>
+            </ol>
+        </nav>
+        <h1 class="page-title">Reservation #{{ reservation.id }}</h1>
+        <p class="page-subtitle">{{ reservation.restaurant.name }}</p>
+    </div>
+    <div class="d-flex gap-2 align-items-center">
+        <span class="status-badge status-{{ reservation.status }}">
+            <i class="fas fa-{{ 'check-circle' if reservation.status == 'confirmed' else 'clock' if reservation.status == 'pending' else 'times-circle' if reservation.status in ['cancelled', 'no_show'] else 'check-double' if reservation.status == 'completed' else 'info-circle' }}"></i>
+            {{ reservation.status|capitalize }}
+        </span>
+    </div>
+</div>
+
+<div class="row g-4">
+    <!-- Main Content -->
+    <div class="col-lg-8">
+        <!-- Customer Information Card -->
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5 class="card-title mb-0">
+                    <i class="fas fa-user-circle me-2 text-primary"></i>Customer Information
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="row g-4">
+                    <div class="col-md-6">
+                        <div class="info-item">
+                            <div class="info-icon">
+                                <i class="fas fa-user"></i>
+                            </div>
+                            <div class="info-content">
+                                <span class="info-label">Customer Name</span>
+                                <span class="info-value">{{ reservation.customer_name }}</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="info-item">
+                            <div class="info-icon">
+                                <i class="fas fa-phone"></i>
+                            </div>
+                            <div class="info-content">
+                                <span class="info-label">Phone Number</span>
+                                <span class="info-value">
+                                    <a href="tel:{{ reservation.customer_phone }}" class="text-decoration-none">
+                                        {{ reservation.customer_phone }}
+                                    </a>
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="info-item">
+                            <div class="info-icon">
+                                <i class="fas fa-envelope"></i>
+                            </div>
+                            <div class="info-content">
+                                <span class="info-label">Email Address</span>
+                                <span class="info-value">
+                                    {% if reservation.customer_email %}
+                                    <a href="mailto:{{ reservation.customer_email }}" class="text-decoration-none">
+                                        {{ reservation.customer_email }}
+                                    </a>
+                                    {% else %}
+                                    <span class="text-muted">Not provided</span>
+                                    {% endif %}
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="info-item">
+                            <div class="info-icon">
+                                <i class="fas fa-users"></i>
+                            </div>
+                            <div class="info-content">
+                                <span class="info-label">Party Size</span>
+                                <span class="info-value">{{ reservation.party_size }} guest{{ 's' if reservation.party_size != 1 else '' }}</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Reservation Details Card -->
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5 class="card-title mb-0">
+                    <i class="fas fa-calendar-alt me-2 text-success"></i>Reservation Details
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="row g-4">
+                    <div class="col-md-6">
+                        <div class="info-item">
+                            <div class="info-icon success">
+                                <i class="fas fa-calendar-day"></i>
+                            </div>
+                            <div class="info-content">
+                                <span class="info-label">Date</span>
+                                <span class="info-value">{{ reservation.reservation_date.strftime('%A, %B %d, %Y') }}</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="info-item">
+                            <div class="info-icon success">
+                                <i class="fas fa-clock"></i>
+                            </div>
+                            <div class="info-content">
+                                <span class="info-label">Time</span>
+                                <span class="info-value">{{ reservation.reservation_time.strftime('%I:%M %p') }}</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="info-item">
+                            <div class="info-icon warning">
+                                <i class="fas fa-hourglass-half"></i>
+                            </div>
+                            <div class="info-content">
+                                <span class="info-label">Duration</span>
+                                <span class="info-value">{{ reservation.duration_minutes }} minutes</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="info-item">
+                            <div class="info-icon info">
+                                <i class="fas fa-chair"></i>
+                            </div>
+                            <div class="info-content">
+                                <span class="info-label">Table</span>
+                                <span class="info-value">
+                                    {% if reservation.table %}
+                                    {{ reservation.table.name or reservation.table.table_number }}
+                                    {% if reservation.table.location %}
+                                    <span class="text-muted">({{ reservation.table.location }})</span>
+                                    {% endif %}
+                                    {% else %}
+                                    <span class="text-muted">Not assigned</span>
+                                    {% endif %}
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Special Requests Card (if any) -->
+        {% if reservation.special_requests %}
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5 class="card-title mb-0">
+                    <i class="fas fa-comment-dots me-2 text-warning"></i>Special Requests
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="special-requests-box">
+                    <i class="fas fa-quote-left text-muted me-2"></i>
+                    {{ reservation.special_requests }}
+                </div>
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Metadata Card -->
+        <div class="card">
+            <div class="card-header">
+                <h5 class="card-title mb-0">
+                    <i class="fas fa-info-circle me-2 text-secondary"></i>Additional Information
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="row g-4">
+                    <div class="col-md-4">
+                        <div class="meta-item">
+                            <span class="meta-label">Source</span>
+                            <span class="meta-value">
+                                <span class="source-badge source-{{ reservation.source }}">
+                                    <i class="fas fa-{{ 'robot' if reservation.source == 'ai_assistant' else 'phone' if reservation.source == 'phone' else 'globe' if reservation.source == 'website' else 'user' }}"></i>
+                                    {{ reservation.source|replace('_', ' ')|title }}
+                                </span>
+                            </span>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="meta-item">
+                            <span class="meta-label">Created</span>
+                            <span class="meta-value">{{ reservation.created_at.strftime('%b %d, %Y at %I:%M %p') }}</span>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="meta-item">
+                            <span class="meta-label">Confirmation #</span>
+                            <span class="meta-value">
+                                <code class="confirmation-code">{{ reservation.confirmation_number or reservation.id }}</code>
+                            </span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Sidebar -->
+    <div class="col-lg-4">
+        <!-- Quick Actions Card -->
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5 class="card-title mb-0">
+                    <i class="fas fa-bolt me-2 text-warning"></i>Quick Actions
+                </h5>
+            </div>
+            <div class="card-body">
+                <form method="POST" action="{{ url_for('admin.update_reservation_status', id=reservation.id) }}" class="mb-3">
+                    <label class="form-label fw-semibold">Update Status</label>
+                    <select name="status" class="form-select mb-3">
+                        <option value="pending" {{ 'selected' if reservation.status == 'pending' else '' }}>
+                            ⏳ Pending
+                        </option>
+                        <option value="confirmed" {{ 'selected' if reservation.status == 'confirmed' else '' }}>
+                            ✅ Confirmed
+                        </option>
+                        <option value="completed" {{ 'selected' if reservation.status == 'completed' else '' }}>
+                            ✔️ Completed
+                        </option>
+                        <option value="cancelled" {{ 'selected' if reservation.status == 'cancelled' else '' }}>
+                            ❌ Cancelled
+                        </option>
+                        <option value="no_show" {{ 'selected' if reservation.status == 'no_show' else '' }}>
+                            👻 No Show
+                        </option>
+                    </select>
+                    <button type="submit" class="btn btn-primary w-100">
+                        <i class="fas fa-save me-2"></i>Update Status
+                    </button>
+                </form>
+                
+                <hr class="my-3">
+                
+                <div class="d-grid gap-2">
+                    <a href="tel:{{ reservation.customer_phone }}" class="btn btn-outline-success">
+                        <i class="fas fa-phone me-2"></i>Call Customer
+                    </a>
+                    {% if reservation.customer_email %}
+                    <a href="mailto:{{ reservation.customer_email }}" class="btn btn-outline-primary">
+                        <i class="fas fa-envelope me-2"></i>Send Email
+                    </a>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <!-- Restaurant Info Card -->
+        <div class="card">
+            <div class="card-header">
+                <h5 class="card-title mb-0">
+                    <i class="fas fa-utensils me-2 text-primary"></i>Restaurant
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="restaurant-info">
+                    <h6 class="mb-1">{{ reservation.restaurant.name }}</h6>
+                    <p class="text-muted small mb-2">
+                        {% if reservation.restaurant.address %}
+                        {{ reservation.restaurant.address }}<br>
+                        {% endif %}
+                        {{ reservation.restaurant.city or '' }}
+                    </p>
+                    <a href="{{ url_for('admin.restaurant_detail', id=reservation.restaurant.id) }}" class="btn btn-sm btn-outline-primary">
+                        <i class="fas fa-external-link-alt me-1"></i>View Restaurant
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Back Button -->
+<div class="mt-4">
+    <a href="{{ url_for('admin.reservations') }}" class="btn btn-outline-secondary">
+        <i class="fas fa-arrow-left me-2"></i>Back to Reservations
+    </a>
+</div>
+
+<style>
+/* Page Header */
+.page-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 1.5rem;
+    flex-wrap: wrap;
+    gap: 1rem;
+}
+
+.page-title {
+    font-size: 1.75rem;
+    font-weight: 700;
+    color: #1e293b;
+    margin: 0;
+}
+
+.page-subtitle {
+    color: #64748b;
+    margin: 0.25rem 0 0 0;
+}
+
+.breadcrumb {
+    background: none;
+    padding: 0;
+    margin: 0;
+    font-size: 0.875rem;
+}
+
+.breadcrumb-item a {
+    color: #2D8B7A;
+    text-decoration: none;
+}
+
+.breadcrumb-item a:hover {
+    text-decoration: underline;
+}
+
+.breadcrumb-item.active {
+    color: #64748b;
+}
+
+/* Status Badge */
+.status-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 1rem;
+    border-radius: 50px;
+    font-weight: 600;
+    font-size: 0.875rem;
+}
+
+.status-badge i {
+    font-size: 0.75rem;
+}
+
+.status-pending {
+    background: linear-gradient(135deg, #fef3c7, #fde68a);
+    color: #92400e;
+}
+
+.status-confirmed {
+    background: linear-gradient(135deg, #d1fae5, #a7f3d0);
+    color: #065f46;
+}
+
+.status-completed {
+    background: linear-gradient(135deg, #dbeafe, #bfdbfe);
+    color: #1e40af;
+}
+
+.status-cancelled, .status-no_show {
+    background: linear-gradient(135deg, #fee2e2, #fecaca);
+    color: #991b1b;
+}
+
+/* Cards */
+.card {
+    border: none;
+    border-radius: 12px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    background: white;
+}
+
+.card-header {
+    background: white;
+    border-bottom: 1px solid #f1f5f9;
+    padding: 1rem 1.25rem;
+    border-radius: 12px 12px 0 0;
+}
+
+.card-title {
+    font-size: 1rem;
+    font-weight: 600;
+    color: #1e293b;
+    display: flex;
+    align-items: center;
+}
+
+.card-body {
+    padding: 1.25rem;
+}
+
+/* Info Items */
+.info-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 1rem;
+}
+
+.info-icon {
+    width: 40px;
+    height: 40px;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(135deg, #e0f2fe, #bae6fd);
+    color: #0284c7;
+    flex-shrink: 0;
+}
+
+.info-icon.success {
+    background: linear-gradient(135deg, #d1fae5, #a7f3d0);
+    color: #059669;
+}
+
+.info-icon.warning {
+    background: linear-gradient(135deg, #fef3c7, #fde68a);
+    color: #d97706;
+}
+
+.info-icon.info {
+    background: linear-gradient(135deg, #e0e7ff, #c7d2fe);
+    color: #4f46e5;
+}
+
+.info-content {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+}
+
+.info-label {
+    font-size: 0.75rem;
+    color: #64748b;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    font-weight: 500;
+}
+
+.info-value {
+    font-size: 0.9375rem;
+    color: #1e293b;
+    font-weight: 500;
+}
+
+.info-value a {
+    color: #2D8B7A;
+}
+
+.info-value a:hover {
+    color: #236b5e;
+}
+
+/* Special Requests */
+.special-requests-box {
+    background: #f8fafc;
+    border-left: 4px solid #f59e0b;
+    padding: 1rem 1.25rem;
+    border-radius: 0 8px 8px 0;
+    color: #475569;
+    font-style: italic;
+    line-height: 1.6;
+}
+
+/* Meta Items */
+.meta-item {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+}
+
+.meta-label {
+    font-size: 0.75rem;
+    color: #64748b;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.meta-value {
+    font-size: 0.875rem;
+    color: #1e293b;
+}
+
+/* Source Badge */
+.source-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
+    padding: 0.25rem 0.75rem;
+    border-radius: 50px;
+    font-size: 0.8125rem;
+    font-weight: 500;
+}
+
+.source-ai_assistant {
+    background: linear-gradient(135deg, #d1fae5, #a7f3d0);
+    color: #065f46;
+}
+
+.source-phone {
+    background: linear-gradient(135deg, #dbeafe, #bfdbfe);
+    color: #1e40af;
+}
+
+.source-website {
+    background: linear-gradient(135deg, #e0e7ff, #c7d2fe);
+    color: #4f46e5;
+}
+
+.source-manual {
+    background: linear-gradient(135deg, #f1f5f9, #e2e8f0);
+    color: #475569;
+}
+
+/* Confirmation Code */
+.confirmation-code {
+    background: #f1f5f9;
+    padding: 0.25rem 0.5rem;
+    border-radius: 4px;
+    font-family: 'Monaco', 'Menlo', monospace;
+    font-size: 0.875rem;
+    color: #2D8B7A;
+}
+
+/* Form Elements */
+.form-select {
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    padding: 0.625rem 1rem;
+    font-size: 0.9375rem;
+    color: #1e293b;
+    background-color: white;
+    transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.form-select:focus {
+    border-color: #2D8B7A;
+    box-shadow: 0 0 0 3px rgba(45, 139, 122, 0.1);
+    outline: none;
+}
+
+.form-label {
+    font-size: 0.875rem;
+    color: #475569;
+    margin-bottom: 0.5rem;
+}
+
+/* Buttons */
+.btn {
+    border-radius: 8px;
+    font-weight: 500;
+    padding: 0.625rem 1.25rem;
+    transition: all 0.2s;
+}
+
+.btn-primary {
+    background: linear-gradient(135deg, #2D8B7A, #4ECDC4);
+    border: none;
+    color: white;
+}
+
+.btn-primary:hover {
+    background: linear-gradient(135deg, #236b5e, #3dbdb4);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(45, 139, 122, 0.3);
+}
+
+.btn-outline-primary {
+    border: 1px solid #2D8B7A;
+    color: #2D8B7A;
+    background: transparent;
+}
+
+.btn-outline-primary:hover {
+    background: #2D8B7A;
+    color: white;
+}
+
+.btn-outline-success {
+    border: 1px solid #059669;
+    color: #059669;
+    background: transparent;
+}
+
+.btn-outline-success:hover {
+    background: #059669;
+    color: white;
+}
+
+.btn-outline-secondary {
+    border: 1px solid #cbd5e1;
+    color: #64748b;
+    background: transparent;
+}
+
+.btn-outline-secondary:hover {
+    background: #f8fafc;
+    border-color: #94a3b8;
+    color: #475569;
+}
+
+/* Restaurant Info */
+.restaurant-info h6 {
+    color: #1e293b;
+    font-weight: 600;
+}
+
+/* Responsive */
+@media (max-width: 991.98px) {
+    .page-header {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+}
+</style>
+{% endblock %}

@@ -1,0 +1,204 @@
+{% extends "admin/base.html" %}
+
+{% block title %}Settings - AppointMint{% endblock %}
+
+{% block admin_content %}
+<div class="page-header">
+    <div>
+        <h1 class="page-title">Settings</h1>
+        <p class="page-subtitle">Manage your account and preferences</p>
+    </div>
+</div>
+
+<div class="row g-4">
+    <!-- Profile Settings -->
+    <div class="col-lg-8">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="card-title mb-0">Account Information</h5>
+            </div>
+            <div class="card-body">
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <label class="form-label text-muted">Name</label>
+                        <p class="fw-semibold mb-0">{{ current_user.full_name }}</p>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label text-muted">Email</label>
+                        <p class="fw-semibold mb-0">{{ current_user.email }}</p>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label text-muted">Role</label>
+                        <p class="fw-semibold mb-0">{{ current_user.role|replace('_', ' ')|title }}</p>
+                    </div>
+                    {% if tenant %}
+                    <div class="col-md-6">
+                        <label class="form-label text-muted">Company</label>
+                        <p class="fw-semibold mb-0">{{ tenant.name }}</p>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+        
+        <!-- API Configuration -->
+        <div class="card mt-4">
+            <div class="card-header">
+                <h5 class="card-title mb-0">API Configuration</h5>
+            </div>
+            <div class="card-body">
+                <label class="form-label">API Endpoint</label>
+                <div class="input-group mb-3">
+                    <input type="text" class="form-control" value="{{ request.host_url }}api/" readonly>
+                    <button class="btn btn-outline-secondary" onclick="navigator.clipboard.writeText('{{ request.host_url }}api/'); this.innerHTML='<i class=\'fas fa-check\'></i> Copied!';">
+                        <i class="fas fa-copy"></i> Copy
+                    </button>
+                </div>
+                <p class="text-muted small mb-0">
+                    Use this endpoint to integrate AppointMint with your existing systems.
+                </p>
+            </div>
+        </div>
+        
+        <!-- Danger Zone -->
+        <div class="card mt-4 border-danger">
+            <div class="card-header bg-danger text-white">
+                <h5 class="card-title mb-0">Danger Zone</h5>
+            </div>
+            <div class="card-body">
+                <p class="text-muted small mb-3">Once you delete your account, there is no going back. Please be certain.</p>
+                <button class="btn btn-outline-danger btn-sm" onclick="alert('Please contact support to delete your account.')">
+                    <i class="fas fa-trash me-2"></i>Delete Account
+                </button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Sidebar Info -->
+    <div class="col-lg-4">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="card-title mb-0">Profile</h5>
+            </div>
+            <div class="card-body text-center">
+                <div class="avatar-large mx-auto mb-3">
+                    {{ current_user.first_name[0] if current_user.first_name else 'U' }}{{ current_user.last_name[0] if current_user.last_name else '' }}
+                </div>
+                <h5 class="mb-1">{{ current_user.full_name }}</h5>
+                <p class="text-muted small mb-0">{{ current_user.email }}</p>
+            </div>
+        </div>
+        
+        {% if tenant %}
+        <!-- Subscription -->
+        <div class="card mt-4">
+            <div class="card-header">
+                <h5 class="card-title mb-0">Subscription</h5>
+            </div>
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center mb-3 p-3 bg-light rounded">
+                    <span class="text-muted">Current Plan</span>
+                    <span class="fw-semibold">{{ tenant.subscription_plan|replace('_', ' ')|title }}</span>
+                </div>
+                <div class="d-flex justify-content-between align-items-center p-3 bg-light rounded">
+                    <span class="text-muted">Status</span>
+                    <span class="status-badge {{ 'status-active' if tenant.subscription_status == 'active' else 'status-warning' }}">
+                        {{ tenant.subscription_status|capitalize }}
+                    </span>
+                </div>
+                <button class="btn btn-primary w-100 mt-3">
+                    <i class="fas fa-arrow-up me-2"></i>Upgrade Plan
+                </button>
+            </div>
+        </div>
+        {% endif %}
+        
+        <div class="card mt-4">
+            <div class="card-header">
+                <h5 class="card-title mb-0">Quick Links</h5>
+            </div>
+            <div class="card-body p-0">
+                <a href="#" class="setting-link">
+                    <i class="fas fa-question-circle"></i>
+                    <span>Help Center</span>
+                    <i class="fas fa-external-link-alt ms-auto"></i>
+                </a>
+                <a href="#" class="setting-link">
+                    <i class="fas fa-book"></i>
+                    <span>Documentation</span>
+                    <i class="fas fa-external-link-alt ms-auto"></i>
+                </a>
+                <a href="#" class="setting-link">
+                    <i class="fas fa-headset"></i>
+                    <span>Contact Support</span>
+                    <i class="fas fa-external-link-alt ms-auto"></i>
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+.avatar-large {
+    width: 80px;
+    height: 80px;
+    background: linear-gradient(135deg, #4CAF50, #66BB6A);
+    border-radius: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    font-size: 1.5rem;
+    font-weight: 600;
+}
+
+.status-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.25rem 0.75rem;
+    border-radius: 20px;
+    font-size: 0.75rem;
+    font-weight: 500;
+}
+
+.status-active {
+    background: #dcfce7;
+    color: #166534;
+}
+
+.status-warning {
+    background: #fef3c7;
+    color: #92400e;
+}
+
+.setting-link {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 1rem 1.25rem;
+    color: #334155;
+    text-decoration: none;
+    border-bottom: 1px solid #f1f5f9;
+    transition: background 0.2s;
+}
+
+.setting-link:last-child {
+    border-bottom: none;
+}
+
+.setting-link:hover {
+    background: #f8fafc;
+    color: #4CAF50;
+}
+
+.setting-link i:first-child {
+    width: 20px;
+    text-align: center;
+    color: #94a3b8;
+}
+
+.setting-link:hover i:first-child {
+    color: #4CAF50;
+}
+</style>
+{% endblock %}

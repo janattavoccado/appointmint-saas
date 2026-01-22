@@ -1,0 +1,119 @@
+{% extends "base.html" %}
+
+{% block title %}Demo{% endblock %}
+
+{% block content %}
+<section class="hero" style="min-height: auto; padding: 10rem 2rem 4rem;">
+    <div class="hero-container">
+        <h1 class="hero-title" style="font-size: 2.75rem;">
+            See AppointMint<br><span class="text-gradient">In Action</span>
+        </h1>
+        <p class="hero-subtitle">
+            Experience how our AI concierge handles reservations naturally and efficiently.
+        </p>
+    </div>
+</section>
+
+<section class="section-container">
+    <div style="max-width: 800px; margin: 0 auto; text-align: center;">
+        <!-- Demo Video Placeholder -->
+        <div style="background: var(--gray-100); border-radius: var(--radius-lg); padding: 4rem 2rem; margin-bottom: 3rem;">
+            <svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="var(--primary-color)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-bottom: 1rem;">
+                <circle cx="12" cy="12" r="10"></circle>
+                <polygon points="10 8 16 12 10 16 10 8"></polygon>
+            </svg>
+            <h3 style="font-size: 1.25rem; margin-bottom: 0.5rem;">Demo Video Coming Soon</h3>
+            <p style="color: var(--text-light);">We're preparing an interactive demo to showcase AppointMint's capabilities.</p>
+        </div>
+        
+        <!-- Interactive Demo -->
+        <h2 style="font-size: 1.75rem; font-weight: 700; margin-bottom: 1.5rem; color: var(--secondary-color);">Try the AI Assistant</h2>
+        <p style="color: var(--text-light); margin-bottom: 2rem;">
+            Chat with our AI assistant below to see how it handles reservation requests.
+        </p>
+        
+        <div style="background: white; border: 1px solid var(--gray-200); border-radius: var(--radius-lg); overflow: hidden; text-align: left;">
+            <div style="background: var(--secondary-color); color: white; padding: 1rem 1.5rem;">
+                <h4 style="font-size: 1rem; font-weight: 600;">AppointMint AI Assistant</h4>
+            </div>
+            <div id="chatMessages" style="height: 300px; overflow-y: auto; padding: 1.5rem;">
+                <div style="background: var(--primary-light); padding: 0.75rem 1rem; border-radius: var(--radius); margin-bottom: 1rem; max-width: 80%;">
+                    <p style="font-size: 0.9375rem;">Hello! I'm AppointMint's AI assistant. I can help you make a reservation. What date and time would you like to book?</p>
+                </div>
+            </div>
+            <div style="border-top: 1px solid var(--gray-200); padding: 1rem 1.5rem; display: flex; gap: 0.75rem;">
+                <input type="text" id="chatInput" class="form-input" placeholder="Type your message..." style="flex: 1;">
+                <button id="sendBtn" class="btn btn-primary">Send</button>
+            </div>
+        </div>
+        
+        <p style="color: var(--text-light); font-size: 0.875rem; margin-top: 1rem;">
+            Note: This is a demo. In production, the AI connects to your restaurant's actual availability.
+        </p>
+    </div>
+</section>
+
+<section class="cta-section">
+    <div class="section-container">
+        <h2>Ready to Transform Your Reservations?</h2>
+        <p>Start your free 14-day trial. No credit card required.</p>
+        <a href="{{ url_for('auth.register') }}" class="btn btn-primary btn-lg">Start Free Trial</a>
+    </div>
+</section>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    const chatMessages = document.getElementById('chatMessages');
+    const chatInput = document.getElementById('chatInput');
+    const sendBtn = document.getElementById('sendBtn');
+    
+    const demoResponses = [
+        "Great! I'd be happy to help you with that. How many guests will be dining?",
+        "Perfect! Let me check our availability for that date and party size. One moment please...",
+        "Excellent news! We have availability at 7:00 PM and 7:30 PM. Which would you prefer?",
+        "Wonderful choice! May I have your name and phone number to complete the reservation?",
+        "Thank you! Your reservation is confirmed. You'll receive a confirmation text shortly. Is there anything else I can help you with?"
+    ];
+    
+    let responseIndex = 0;
+    
+    function addMessage(text, isUser) {
+        const messageDiv = document.createElement('div');
+        messageDiv.style.cssText = `
+            background: ${isUser ? 'var(--gray-100)' : 'var(--primary-light)'};
+            padding: 0.75rem 1rem;
+            border-radius: var(--radius);
+            margin-bottom: 1rem;
+            max-width: 80%;
+            ${isUser ? 'margin-left: auto;' : ''}
+        `;
+        messageDiv.innerHTML = `<p style="font-size: 0.9375rem;">${text}</p>`;
+        chatMessages.appendChild(messageDiv);
+        chatMessages.scrollTop = chatMessages.scrollHeight;
+    }
+    
+    function handleSend() {
+        const message = chatInput.value.trim();
+        if (!message) return;
+        
+        addMessage(message, true);
+        chatInput.value = '';
+        
+        // Simulate AI response
+        setTimeout(() => {
+            if (responseIndex < demoResponses.length) {
+                addMessage(demoResponses[responseIndex], false);
+                responseIndex++;
+            } else {
+                addMessage("Thank you for trying our demo! Sign up for a free trial to experience the full capabilities of AppointMint.", false);
+            }
+        }, 1000);
+    }
+    
+    sendBtn.addEventListener('click', handleSend);
+    chatInput.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') handleSend();
+    });
+</script>
+{% endblock %}

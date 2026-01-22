@@ -1,0 +1,104 @@
+{% extends "base.html" %}
+
+{% block title %}Pricing{% endblock %}
+
+{% block content %}
+<section class="hero" style="min-height: auto; padding: 10rem 2rem 4rem;">
+    <div class="hero-container">
+        <h1 class="hero-title" style="font-size: 2.75rem;">
+            Simple, Transparent<br><span class="text-gradient">Pricing</span>
+        </h1>
+        <p class="hero-subtitle">
+            Choose the plan that fits your restaurant. No hidden fees, cancel anytime.
+        </p>
+    </div>
+</section>
+
+<section class="section-container">
+    <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 2rem; max-width: 1000px; margin: 0 auto;">
+        <!-- Starter Plan -->
+        <div class="feature-card" style="text-align: center;">
+            <h3 style="font-size: 1.25rem; margin-bottom: 0.5rem;">Starter</h3>
+            <p style="color: var(--text-light); margin-bottom: 1.5rem;">For small restaurants</p>
+            <div style="font-size: 3rem; font-weight: 700; color: var(--secondary-color); margin-bottom: 0.5rem;">$49</div>
+            <p style="color: var(--text-light); margin-bottom: 2rem;">per month</p>
+            
+            <ul style="list-style: none; text-align: left; margin-bottom: 2rem;">
+                <li style="padding: 0.5rem 0; border-bottom: 1px solid var(--gray-100);">✓ 1 Restaurant</li>
+                <li style="padding: 0.5rem 0; border-bottom: 1px solid var(--gray-100);">✓ Up to 500 reservations/mo</li>
+                <li style="padding: 0.5rem 0; border-bottom: 1px solid var(--gray-100);">✓ AI Text Assistant</li>
+                <li style="padding: 0.5rem 0; border-bottom: 1px solid var(--gray-100);">✓ Email Notifications</li>
+                <li style="padding: 0.5rem 0; border-bottom: 1px solid var(--gray-100);">✓ Basic Analytics</li>
+                <li style="padding: 0.5rem 0;">✓ Email Support</li>
+            </ul>
+            
+            <a href="{{ url_for('auth.register') }}" class="btn btn-outline" style="width: 100%;">Start Free Trial</a>
+        </div>
+        
+        <!-- Professional Plan -->
+        <div class="feature-card" style="text-align: center; border-color: var(--primary-color); position: relative;">
+            <div style="position: absolute; top: -12px; left: 50%; transform: translateX(-50%); background: var(--primary-color); color: white; padding: 0.25rem 1rem; border-radius: var(--radius-full); font-size: 0.75rem; font-weight: 600;">MOST POPULAR</div>
+            <h3 style="font-size: 1.25rem; margin-bottom: 0.5rem;">Professional</h3>
+            <p style="color: var(--text-light); margin-bottom: 1.5rem;">For growing businesses</p>
+            <div style="font-size: 3rem; font-weight: 700; color: var(--secondary-color); margin-bottom: 0.5rem;">$99</div>
+            <p style="color: var(--text-light); margin-bottom: 2rem;">per month</p>
+            
+            <ul style="list-style: none; text-align: left; margin-bottom: 2rem;">
+                <li style="padding: 0.5rem 0; border-bottom: 1px solid var(--gray-100);">✓ Up to 3 Restaurants</li>
+                <li style="padding: 0.5rem 0; border-bottom: 1px solid var(--gray-100);">✓ Unlimited reservations</li>
+                <li style="padding: 0.5rem 0; border-bottom: 1px solid var(--gray-100);">✓ AI Voice + Text Assistant</li>
+                <li style="padding: 0.5rem 0; border-bottom: 1px solid var(--gray-100);">✓ SMS + Email Notifications</li>
+                <li style="padding: 0.5rem 0; border-bottom: 1px solid var(--gray-100);">✓ Advanced Analytics</li>
+                <li style="padding: 0.5rem 0; border-bottom: 1px solid var(--gray-100);">✓ CRM Integration</li>
+                <li style="padding: 0.5rem 0;">✓ Priority Support</li>
+            </ul>
+            
+            <a href="{{ url_for('auth.register') }}" class="btn btn-primary" style="width: 100%;">Start Free Trial</a>
+        </div>
+        
+        <!-- Enterprise Plan -->
+        <div class="feature-card" style="text-align: center;">
+            <h3 style="font-size: 1.25rem; margin-bottom: 0.5rem;">Enterprise</h3>
+            <p style="color: var(--text-light); margin-bottom: 1.5rem;">For large operations</p>
+            <div style="font-size: 3rem; font-weight: 700; color: var(--secondary-color); margin-bottom: 0.5rem;">Custom</div>
+            <p style="color: var(--text-light); margin-bottom: 2rem;">contact us</p>
+            
+            <ul style="list-style: none; text-align: left; margin-bottom: 2rem;">
+                <li style="padding: 0.5rem 0; border-bottom: 1px solid var(--gray-100);">✓ Unlimited Restaurants</li>
+                <li style="padding: 0.5rem 0; border-bottom: 1px solid var(--gray-100);">✓ Unlimited reservations</li>
+                <li style="padding: 0.5rem 0; border-bottom: 1px solid var(--gray-100);">✓ Custom AI Training</li>
+                <li style="padding: 0.5rem 0; border-bottom: 1px solid var(--gray-100);">✓ White-label Option</li>
+                <li style="padding: 0.5rem 0; border-bottom: 1px solid var(--gray-100);">✓ Custom Integrations</li>
+                <li style="padding: 0.5rem 0; border-bottom: 1px solid var(--gray-100);">✓ SLA Guarantee</li>
+                <li style="padding: 0.5rem 0;">✓ Dedicated Account Manager</li>
+            </ul>
+            
+            <a href="#" class="btn btn-outline" style="width: 100%;">Contact Sales</a>
+        </div>
+    </div>
+</section>
+
+<!-- FAQ Section -->
+<section class="section-container" style="background: var(--gray-50);">
+    <h2 class="section-title">Frequently Asked Questions</h2>
+    
+    <div style="max-width: 700px; margin: 0 auto;">
+        <div style="margin-bottom: 1.5rem; padding: 1.5rem; background: white; border-radius: var(--radius-lg);">
+            <h4 style="margin-bottom: 0.5rem;">Is there a free trial?</h4>
+            <p style="color: var(--text-light);">Yes! All plans come with a 14-day free trial. No credit card required to start.</p>
+        </div>
+        <div style="margin-bottom: 1.5rem; padding: 1.5rem; background: white; border-radius: var(--radius-lg);">
+            <h4 style="margin-bottom: 0.5rem;">Can I change plans later?</h4>
+            <p style="color: var(--text-light);">Absolutely. You can upgrade or downgrade your plan at any time. Changes take effect on your next billing cycle.</p>
+        </div>
+        <div style="margin-bottom: 1.5rem; padding: 1.5rem; background: white; border-radius: var(--radius-lg);">
+            <h4 style="margin-bottom: 0.5rem;">What payment methods do you accept?</h4>
+            <p style="color: var(--text-light);">We accept all major credit cards (Visa, MasterCard, American Express) and can arrange invoicing for Enterprise customers.</p>
+        </div>
+        <div style="padding: 1.5rem; background: white; border-radius: var(--radius-lg);">
+            <h4 style="margin-bottom: 0.5rem;">Is there a setup fee?</h4>
+            <p style="color: var(--text-light);">No setup fees for Starter and Professional plans. Enterprise plans may include custom implementation services.</p>
+        </div>
+    </div>
+</section>
+{% endblock %}

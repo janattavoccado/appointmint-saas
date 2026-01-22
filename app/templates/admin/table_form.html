@@ -1,0 +1,103 @@
+{% extends "admin/base.html" %}
+
+{% block title %}{{ 'Edit' if table else 'Add' }} Table - {{ restaurant.name }} - AppointMint{% endblock %}
+
+{% block admin_content %}
+<div class="page-header">
+    <div>
+        <h1 class="page-title">{{ 'Edit' if table else 'Add' }} Table</h1>
+        <p class="page-subtitle">{{ restaurant.name }}</p>
+    </div>
+    <a href="{{ url_for('admin.tables', restaurant_id=restaurant.id) }}" class="btn btn-outline-secondary">
+        <i class="fas fa-arrow-left me-2"></i>Back to Tables
+    </a>
+</div>
+
+<div class="row">
+    <div class="col-lg-8">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="card-title mb-0">Table Information</h5>
+            </div>
+            <div class="card-body">
+                <form method="POST">
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="form-label">Table Number <span class="text-danger">*</span></label>
+                            <input type="text" name="table_number" class="form-control" value="{{ table.table_number if table else '' }}" placeholder="e.g., T1, A1, Patio-1" required>
+                            <div class="form-text">Unique identifier for this table</div>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Capacity <span class="text-danger">*</span></label>
+                            <input type="number" name="capacity" class="form-control" value="{{ table.capacity if table else '4' }}" min="1" max="20" required>
+                            <div class="form-text">Maximum number of guests</div>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Location</label>
+                            <select name="location" class="form-select">
+                                <option value="">Select location</option>
+                                <option value="indoor" {{ 'selected' if table and table.location == 'indoor' else '' }}>Indoor</option>
+                                <option value="outdoor" {{ 'selected' if table and table.location == 'outdoor' else '' }}>Outdoor</option>
+                                <option value="patio" {{ 'selected' if table and table.location == 'patio' else '' }}>Patio</option>
+                                <option value="rooftop" {{ 'selected' if table and table.location == 'rooftop' else '' }}>Rooftop</option>
+                                <option value="private" {{ 'selected' if table and table.location == 'private' else '' }}>Private Room</option>
+                                <option value="bar" {{ 'selected' if table and table.location == 'bar' else '' }}>Bar Area</option>
+                            </select>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Status</label>
+                            <select name="is_available" class="form-select">
+                                <option value="1" {{ 'selected' if not table or table.is_available else '' }}>Available</option>
+                                <option value="0" {{ 'selected' if table and not table.is_available else '' }}>Unavailable</option>
+                            </select>
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label">Notes</label>
+                            <textarea name="notes" class="form-control" rows="3" placeholder="Special features, accessibility info, etc.">{{ table.notes if table else '' }}</textarea>
+                        </div>
+                    </div>
+                    
+                    <hr class="my-4">
+                    
+                    <div class="d-flex gap-2">
+                        <button type="submit" class="btn btn-primary">
+                            <i class="fas fa-save me-2"></i>{{ 'Update' if table else 'Add' }} Table
+                        </button>
+                        <a href="{{ url_for('admin.tables', restaurant_id=restaurant.id) }}" class="btn btn-outline-secondary">Cancel</a>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-lg-4">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="card-title mb-0">Tips</h5>
+            </div>
+            <div class="card-body">
+                <div class="tip-item mb-3">
+                    <h6><i class="fas fa-lightbulb text-warning me-2"></i>Table Naming</h6>
+                    <p class="small text-muted mb-0">Use a consistent naming convention like T1, T2 or A1, A2 for easy identification.</p>
+                </div>
+                <div class="tip-item mb-3">
+                    <h6><i class="fas fa-users text-primary me-2"></i>Capacity</h6>
+                    <p class="small text-muted mb-0">Set the maximum comfortable seating. The AI assistant will use this for availability checks.</p>
+                </div>
+                <div class="tip-item">
+                    <h6><i class="fas fa-map-marker-alt text-success me-2"></i>Location</h6>
+                    <p class="small text-muted mb-0">Helps guests choose their preferred seating area when booking.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+.tip-item {
+    padding: 1rem;
+    background: #f8fafc;
+    border-radius: 8px;
+}
+</style>
+{% endblock %}
