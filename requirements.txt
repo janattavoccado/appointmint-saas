@@ -16,3 +16,6 @@ psycopg2-binary==2.9.9
 
 # Database migrations
 Flask-Migrate==4.0.5
+
+# Stripe
+stripe
