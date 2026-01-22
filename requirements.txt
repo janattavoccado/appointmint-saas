@@ -24,5 +24,6 @@ stripe
 pytz
 
 #mem0
-mem0
+mem0ai
+
 
