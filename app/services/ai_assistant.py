@@ -2,7 +2,10 @@
 AI Reservation Assistant Service with OpenAI-Based Entity Extraction
 Uses Pydantic models for structured data and OpenAI for intelligent understanding.
 
-KEY FEATURE: State persistence using database to remember booking details across messages.
+KEY FEATURES:
+1. State persistence using database to remember booking details across messages
+2. Context-aware parsing for direct answers (e.g., "6" when asked for guest count)
+3. OpenAI extraction for complex natural language understanding
 
 Reservation Flow:
 1. Extract all available info from user message using OpenAI
@@ -34,7 +37,12 @@ class BookingState(str, Enum):
     """Enum for booking conversation states"""
     INITIAL = 'initial'
     COLLECTING_INFO = 'collecting_info'
+    AWAITING_DATE = 'awaiting_date'
+    AWAITING_TIME = 'awaiting_time'
+    AWAITING_GUESTS = 'awaiting_guests'
     AWAITING_NAME_CONFIRMATION = 'awaiting_name_confirmation'
+    AWAITING_NAME_INPUT = 'awaiting_name_input'
+    AWAITING_PHONE_INPUT = 'awaiting_phone_input'
     AWAITING_SPECIAL_REQUESTS = 'awaiting_special_requests'
     AWAITING_FINAL_CONFIRMATION = 'awaiting_final_confirmation'
     HANDOVER_TO_HUMAN = 'handover_to_human'
@@ -92,6 +100,7 @@ class ConversationState(BaseModel):
     timezone: str = Field(default='UTC', description="Restaurant timezone")
     incoming_customer_name: Optional[str] = Field(None, description="Name from incoming message")
     incoming_customer_phone: Optional[str] = Field(None, description="Phone from incoming message")
+    last_question: Optional[str] = Field(None, description="What we last asked the user (date/time/guests)")
 
 
 class ButtonOption(BaseModel):
@@ -147,7 +156,7 @@ def _do_save_state(restaurant_id: int, conversation_id: str, state: Conversation
         db.session.add(new_record)
     
     db.session.commit()
-    print(f"Saved state for conversation {conversation_id}: {state.state}", flush=True)
+    print(f"Saved state for conversation {conversation_id}: {state.state}, last_question={state.last_question}", flush=True)
 
 
 def load_conversation_state(restaurant_id: int, conversation_id: str, app=None) -> Optional[ConversationState]:
@@ -173,7 +182,7 @@ def _do_load_state(restaurant_id: int, conversation_id: str) -> Optional[Convers
     if record and record.transcript:
         try:
             state = ConversationState.model_validate_json(record.transcript)
-            print(f"Loaded state for conversation {conversation_id}: {state.state}", flush=True)
+            print(f"Loaded state for conversation {conversation_id}: {state.state}, last_question={state.last_question}", flush=True)
             print(f"Booking details: date={state.booking_details.date}, time={state.booking_details.time}, guests={state.booking_details.guests}", flush=True)
             return state
         except Exception as e:
@@ -202,6 +211,155 @@ def _do_clear_state(restaurant_id: int, conversation_id: str):
     ).delete()
     db.session.commit()
     print(f"Cleared state for conversation {conversation_id}", flush=True)
+
+
+# =============================================================================
+# CONTEXT-AWARE PARSING FUNCTIONS
+# =============================================================================
+
+def parse_number_from_text(text: str) -> Optional[int]:
+    """
+    Extract a number from text, handling both digits and word forms.
+    Returns None if no valid number found.
+    """
+    text = text.lower().strip()
+    
+    # Word to number mapping
+    word_numbers = {
+        'one': 1, 'two': 2, 'three': 3, 'four': 4, 'five': 5,
+        'six': 6, 'seven': 7, 'eight': 8, 'nine': 9, 'ten': 10,
+        'eleven': 11, 'twelve': 12, 'thirteen': 13, 'fourteen': 14, 'fifteen': 15,
+        'sixteen': 16, 'seventeen': 17, 'eighteen': 18, 'nineteen': 19, 'twenty': 20,
+        # Common variations
+        'uno': 1, 'dos': 2, 'tres': 3, 'cuatro': 4, 'cinco': 5,
+        'seis': 6, 'siete': 7, 'ocho': 8, 'nueve': 9, 'diez': 10,
+        # Handle transcription errors
+        'sex': 6, 'sick': 6, 'sicks': 6,  # "six" misheard
+        'to': 2, 'too': 2, 'for': 4,  # common mishearings
+    }
+    
+    # Check for word numbers
+    for word, num in word_numbers.items():
+        if word in text.split():
+            return num
+    
+    # Check for digits
+    digits = re.findall(r'\d+', text)
+    if digits:
+        num = int(digits[0])
+        if 1 <= num <= 50:  # Reasonable guest count
+            return num
+    
+    return None
+
+
+def parse_date_from_text(text: str) -> Tuple[Optional[str], Optional[str]]:
+    """
+    Parse date from text, handling various formats.
+    Returns (date_str in YYYY-MM-DD, display_str) or (None, None).
+    """
+    text = text.lower().strip()
+    today = datetime.now()
+    
+    # Handle relative dates
+    if 'today' in text:
+        return today.strftime('%Y-%m-%d'), f"Today ({today.strftime('%A')})"
+    
+    if 'tomorrow' in text:
+        tomorrow = today + timedelta(days=1)
+        return tomorrow.strftime('%Y-%m-%d'), f"Tomorrow ({tomorrow.strftime('%A')})"
+    
+    # Handle weekday names
+    weekdays = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']
+    for i, day in enumerate(weekdays):
+        if day in text:
+            # Find next occurrence of this weekday
+            days_ahead = i - today.weekday()
+            if days_ahead <= 0:  # Target day already happened this week
+                days_ahead += 7
+            target_date = today + timedelta(days=days_ahead)
+            return target_date.strftime('%Y-%m-%d'), target_date.strftime('%A, %B %d')
+    
+    # Handle YYYY-MM-DD format
+    match = re.search(r'(\d{4})-(\d{2})-(\d{2})', text)
+    if match:
+        try:
+            date = datetime.strptime(match.group(0), '%Y-%m-%d')
+            return match.group(0), date.strftime('%A, %B %d')
+        except ValueError:
+            pass
+    
+    return None, None
+
+
+def parse_time_from_text(text: str) -> Tuple[Optional[str], Optional[str]]:
+    """
+    Parse time from text, handling various formats.
+    Returns (time_str in HH:MM, display_str) or (None, None).
+    """
+    text = text.lower().strip()
+    
+    # Handle common time words
+    time_words = {
+        'noon': ('12:00', '12:00 PM'),
+        'midnight': ('00:00', '12:00 AM'),
+        'lunch': ('12:00', '12:00 PM'),
+        'dinner': ('19:00', '7:00 PM'),
+        'evening': ('19:00', '7:00 PM'),
+    }
+    
+    for word, (time_24, time_12) in time_words.items():
+        if word in text:
+            return time_24, time_12
+    
+    # Handle HH:MM format (24h)
+    match = re.search(r'(\d{1,2}):(\d{2})', text)
+    if match:
+        hour = int(match.group(1))
+        minute = int(match.group(2))
+        if 0 <= hour <= 23 and 0 <= minute <= 59:
+            time_24 = f"{hour:02d}:{minute:02d}"
+            if hour == 0:
+                time_12 = f"12:{minute:02d} AM"
+            elif hour < 12:
+                time_12 = f"{hour}:{minute:02d} AM"
+            elif hour == 12:
+                time_12 = f"12:{minute:02d} PM"
+            else:
+                time_12 = f"{hour-12}:{minute:02d} PM"
+            return time_24, time_12
+    
+    # Handle "X pm" or "X am" format
+    match = re.search(r'(\d{1,2})\s*(am|pm|a\.m\.|p\.m\.)', text)
+    if match:
+        hour = int(match.group(1))
+        is_pm = 'p' in match.group(2).lower()
+        
+        if is_pm and hour != 12:
+            hour += 12
+        elif not is_pm and hour == 12:
+            hour = 0
+        
+        time_24 = f"{hour:02d}:00"
+        if hour == 0:
+            time_12 = "12:00 AM"
+        elif hour < 12:
+            time_12 = f"{hour}:00 AM"
+        elif hour == 12:
+            time_12 = "12:00 PM"
+        else:
+            time_12 = f"{hour-12}:00 PM"
+        return time_24, time_12
+    
+    # Handle just a number (assume PM for typical dinner hours 5-10)
+    match = re.search(r'^(\d{1,2})$', text)
+    if match:
+        hour = int(match.group(1))
+        if 1 <= hour <= 10:  # Assume PM for dinner hours
+            hour_24 = hour + 12 if hour != 12 else 12
+            return f"{hour_24:02d}:00", f"{hour}:00 PM"
+    
+    return None, None
 
 
 # =============================================================================
@@ -255,18 +413,23 @@ class ReservationAssistant:
             }
         return self._restaurant_info
     
-    def _extract_reservation_info(self, message: str) -> ExtractedReservationInfo:
+    def _extract_reservation_info(self, message: str, context: Optional[str] = None) -> ExtractedReservationInfo:
         """
         Use OpenAI to extract reservation information from user message.
-        This is the key function that understands natural language.
+        Context helps OpenAI understand what the user is responding to.
         """
         today = datetime.now()
         today_str = today.strftime('%Y-%m-%d')
         tomorrow_str = (today + timedelta(days=1)).strftime('%Y-%m-%d')
         
+        context_hint = ""
+        if context:
+            context_hint = f"\nIMPORTANT CONTEXT: The user was just asked: \"{context}\". Their response should be interpreted in this context."
+        
         system_prompt = f"""You are an AI that extracts reservation information from user messages.
 Today's date is {today_str} ({today.strftime('%A')}).
 Tomorrow is {tomorrow_str}.
+{context_hint}
 
 Extract the following information if present in the user's message:
 1. has_reservation_intent: true if user wants to make a reservation, book a table, dine, etc.
@@ -283,6 +446,9 @@ Extract the following information if present in the user's message:
    - "evening" = "19:00"
 5. time_display: Human readable time like "6:00 PM"
 6. guests: Number of people (look for "for 4", "party of 2", "2 people", "we will be 7", etc.)
+   - If user says just a number like "6" or "six", extract it as guests
+   - "Six" = 6 guests
+   - Handle transcription errors: "sex" or "sick" likely means "six" = 6
 7. name: Customer name if explicitly mentioned
 8. is_question: true if user is asking a question about the restaurant (hours, menu, location, etc.)
 9. question_topic: What the question is about if is_question is true
@@ -290,9 +456,9 @@ Extract the following information if present in the user's message:
 IMPORTANT: 
 - "dine" means reservation intent
 - "die" is likely a transcription error for "dine"
-- "we will be X people" means X guests
 - Be generous in detecting reservation intent
 - Extract ALL available information from the message
+- If user gives just a number, it's likely answering a previous question about guests
 
 Return a JSON object with these fields. Use null for missing fields."""
 
@@ -499,6 +665,8 @@ Return a JSON object with these fields. Use null for missing fields."""
         missing = booking.get_missing_fields()
         
         if 'date' in missing:
+            conv_state.last_question = 'date'
+            conv_state.state = BookingState.AWAITING_DATE
             return AssistantResponse(
                 text="When would you like to dine? You can type a date or select below:",
                 buttons=self._get_next_7_dates(),
@@ -506,6 +674,8 @@ Return a JSON object with these fields. Use null for missing fields."""
                 conversation_state=conv_state
             )
         elif 'time' in missing:
+            conv_state.last_question = 'time'
+            conv_state.state = BookingState.AWAITING_TIME
             date_text = booking.date_display or booking.date
             return AssistantResponse(
                 text=f"Great! {date_text}. What time would you prefer?",
@@ -514,6 +684,8 @@ Return a JSON object with these fields. Use null for missing fields."""
                 conversation_state=conv_state
             )
         elif 'guests' in missing:
+            conv_state.last_question = 'guests'
+            conv_state.state = BookingState.AWAITING_GUESTS
             return AssistantResponse(
                 text="How many guests will be dining?",
                 buttons=self._get_guest_buttons(),
@@ -559,6 +731,37 @@ Keep responses brief."""
         except Exception as e:
             return f"I apologize, I couldn't process your question. Would you like to make a reservation instead?"
     
+    def _process_contextual_response(self, message: str, conv_state: ConversationState) -> Optional[Tuple[str, Any]]:
+        """
+        Process a response based on what we last asked the user.
+        Returns (field_name, parsed_value) or None if not parseable.
+        """
+        last_question = conv_state.last_question
+        print(f"Processing contextual response. Last question: {last_question}, Message: {message}", flush=True)
+        
+        if last_question == 'guests':
+            # Try to parse guest count
+            guests = parse_number_from_text(message)
+            if guests:
+                print(f"Parsed guests from context: {guests}", flush=True)
+                return ('guests', guests)
+        
+        elif last_question == 'date':
+            # Try to parse date
+            date_str, date_display = parse_date_from_text(message)
+            if date_str:
+                print(f"Parsed date from context: {date_str}", flush=True)
+                return ('date', (date_str, date_display))
+        
+        elif last_question == 'time':
+            # Try to parse time
+            time_str, time_display = parse_time_from_text(message)
+            if time_str:
+                print(f"Parsed time from context: {time_str}", flush=True)
+                return ('time', (time_str, time_display))
+        
+        return None
+    
     def chat_sync(self, message: str, session_id: Optional[str] = None,
                   conversation_history: List[Dict] = None,
                   sender_name: Optional[str] = None,
@@ -602,6 +805,7 @@ Keep responses brief."""
         print(f"=== AI ASSISTANT ===", flush=True)
         print(f"Session ID: {session_id}", flush=True)
         print(f"State: {conv_state.state}", flush=True)
+        print(f"Last question: {conv_state.last_question}", flush=True)
         print(f"Message: {message}", flush=True)
         print(f"Booking so far: date={booking.date}, time={booking.time}, guests={booking.guests}", flush=True)
         
@@ -610,6 +814,93 @@ Keep responses brief."""
             if session_id:
                 save_conversation_state(self.restaurant_id, session_id, response.conversation_state, self.app)
             return response.model_dump_json()
+        
+        # =================================================================
+        # FIRST: Try context-aware parsing for direct answers
+        # =================================================================
+        
+        if conv_state.state in [BookingState.AWAITING_DATE, BookingState.AWAITING_TIME, 
+                                BookingState.AWAITING_GUESTS, BookingState.COLLECTING_INFO]:
+            contextual_result = self._process_contextual_response(message, conv_state)
+            
+            if contextual_result:
+                field_name, value = contextual_result
+                
+                if field_name == 'guests':
+                    booking.guests = value
+                    print(f"Set guests from contextual parsing: {value}", flush=True)
+                    
+                    # Check for large party
+                    if booking.guests > self.MAX_GUESTS_WITHOUT_HANDOVER:
+                        booking.requires_human_handover = True
+                        booking.handover_reason = f"Large party ({booking.guests} guests)"
+                        conv_state.state = BookingState.HANDOVER_TO_HUMAN
+                        conv_state.booking_details = booking
+                        
+                        customer_name = conv_state.incoming_customer_name or "Guest"
+                        customer_phone = conv_state.incoming_customer_phone or "Not provided"
+                        
+                        return respond(AssistantResponse(
+                            text=f"For {booking.guests} guests, our staff will assist you personally.\n\n"
+                                 f"Your Request:\n"
+                                 f"- Date: {booking.date_display or booking.date or 'TBD'}\n"
+                                 f"- Time: {booking.time_display or booking.time or 'TBD'}\n"
+                                 f"- Guests: {booking.guests}\n\n"
+                                 f"Contact: {customer_name} ({customer_phone})\n\n"
+                                 f"Our team will contact you within 24 hours. Any special requests?",
+                            conversation_state=conv_state
+                        ))
+                
+                elif field_name == 'date':
+                    date_str, date_display = value
+                    booking.date = date_str
+                    booking.date_display = date_display
+                    print(f"Set date from contextual parsing: {date_str}", flush=True)
+                
+                elif field_name == 'time':
+                    time_str, time_display = value
+                    booking.time = time_str
+                    booking.time_display = time_display
+                    print(f"Set time from contextual parsing: {time_str}", flush=True)
+                
+                conv_state.booking_details = booking
+                conv_state.state = BookingState.COLLECTING_INFO
+                
+                # Check if all info is now complete
+                if booking.is_complete():
+                    customer_name = conv_state.incoming_customer_name
+                    customer_phone = conv_state.incoming_customer_phone
+                    
+                    if customer_name and customer_phone:
+                        booking.customer_name = customer_name
+                        booking.customer_phone = customer_phone
+                        conv_state.state = BookingState.AWAITING_NAME_CONFIRMATION
+                        conv_state.booking_details = booking
+                        
+                        return respond(AssistantResponse(
+                            text=f"Great! I have your reservation:\n\n"
+                                 f"Date: {booking.date_display or booking.date}\n"
+                                 f"Time: {booking.time_display or booking.time}\n"
+                                 f"Guests: {booking.guests}\n\n"
+                                 f"Is this contact info correct?\n"
+                                 f"Name: {customer_name}\n"
+                                 f"Phone: {customer_phone}",
+                            buttons=self._get_yes_no_buttons(),
+                            button_type='confirm_contact',
+                            conversation_state=conv_state
+                        ))
+                    else:
+                        conv_state.state = BookingState.AWAITING_NAME_INPUT
+                        conv_state.booking_details = booking
+                        return respond(AssistantResponse(
+                            text=f"Great! {booking.date_display or booking.date} at {booking.time_display or booking.time} for {booking.guests}.\n\n"
+                                 f"May I have your name for the reservation?",
+                            conversation_state=conv_state
+                        ))
+                else:
+                    # Ask for next missing info
+                    response = self._ask_for_missing_info(conv_state, booking)
+                    return respond(response)
         
         # =================================================================
         # HANDLE STATES THAT EXPECT SPECIFIC INPUT
@@ -629,6 +920,7 @@ Keep responses brief."""
             elif message_lower in ['no', 'wrong', 'n', 'update', 'change']:
                 booking.customer_name = None
                 booking.customer_phone = None
+                conv_state.state = BookingState.AWAITING_NAME_INPUT
                 conv_state.booking_details = booking
                 return respond(AssistantResponse(
                     text="Please provide your name for the reservation:",
@@ -650,16 +942,19 @@ Keep responses brief."""
                             conversation_state=conv_state
                         ))
                     else:
+                        conv_state.state = BookingState.AWAITING_PHONE_INPUT
                         conv_state.booking_details = booking
                         return respond(AssistantResponse(
                             text=f"Thanks {booking.customer_name.split()[0]}! What's your phone number?",
                             conversation_state=conv_state
                         ))
-                
-                # Check if it's a phone number
-                digits = ''.join(c for c in message if c.isdigit())
-                if len(digits) >= 7:
-                    booking.customer_phone = message.strip()
+        
+        # --- AWAITING NAME INPUT ---
+        if conv_state.state == BookingState.AWAITING_NAME_INPUT:
+            if len(message) >= 2:
+                booking.customer_name = message.strip()
+                if conv_state.incoming_customer_phone:
+                    booking.customer_phone = conv_state.incoming_customer_phone
                     conv_state.state = BookingState.AWAITING_SPECIAL_REQUESTS
                     conv_state.booking_details = booking
                     return respond(AssistantResponse(
@@ -668,9 +963,35 @@ Keep responses brief."""
                         button_type='special_requests',
                         conversation_state=conv_state
                     ))
+                else:
+                    conv_state.state = BookingState.AWAITING_PHONE_INPUT
+                    conv_state.booking_details = booking
+                    return respond(AssistantResponse(
+                        text=f"Thanks {booking.customer_name.split()[0]}! What's your phone number?",
+                        conversation_state=conv_state
+                    ))
+        
+        # --- AWAITING PHONE INPUT ---
+        if conv_state.state == BookingState.AWAITING_PHONE_INPUT:
+            digits = ''.join(c for c in message if c.isdigit())
+            if len(digits) >= 7:
+                booking.customer_phone = message.strip()
+                conv_state.state = BookingState.AWAITING_SPECIAL_REQUESTS
+                conv_state.booking_details = booking
+                return respond(AssistantResponse(
+                    text="Do you have any special requests?",
+                    buttons=self._get_special_request_buttons(),
+                    button_type='special_requests',
+                    conversation_state=conv_state
+                ))
+            else:
+                return respond(AssistantResponse(
+                    text="Please provide a valid phone number:",
+                    conversation_state=conv_state
+                ))
         
         # --- AWAITING SPECIAL REQUESTS ---
-        elif conv_state.state == BookingState.AWAITING_SPECIAL_REQUESTS:
+        if conv_state.state == BookingState.AWAITING_SPECIAL_REQUESTS:
             special_map = {
                 'none': None,
                 'window': 'Window seat preferred',
@@ -713,7 +1034,7 @@ Keep responses brief."""
             ))
         
         # --- AWAITING FINAL CONFIRMATION ---
-        elif conv_state.state == BookingState.AWAITING_FINAL_CONFIRMATION:
+        if conv_state.state == BookingState.AWAITING_FINAL_CONFIRMATION:
             if message_lower in ['confirm', 'yes', 'y', 'book', 'si', 'ja']:
                 result = self._make_reservation(booking)
                 
@@ -724,7 +1045,7 @@ Keep responses brief."""
                         clear_conversation_state(self.restaurant_id, session_id, self.app)
                     return respond(AssistantResponse(
                         text=f"Confirmed!\n\n"
-                             f"Date: {booking.date_display} at {booking.time_display}\n"
+                             f"Date: {booking.date_display or booking.date} at {booking.time_display or booking.time}\n"
                              f"Guests: {booking.guests}\n"
                              f"Table: {result['table_name']}\n"
                              f"Confirmation #: {result['reservation_id']}\n\n"
@@ -749,7 +1070,7 @@ Keep responses brief."""
                 ))
         
         # --- HANDOVER TO HUMAN ---
-        elif conv_state.state == BookingState.HANDOVER_TO_HUMAN:
+        if conv_state.state == BookingState.HANDOVER_TO_HUMAN:
             if message.strip():
                 if booking.special_requests:
                     booking.special_requests += f"\n{message}"
@@ -764,10 +1085,19 @@ Keep responses brief."""
             ))
         
         # =================================================================
-        # EXTRACT INFO FROM MESSAGE USING OPENAI
+        # EXTRACT INFO FROM MESSAGE USING OPENAI (for complex messages)
         # =================================================================
         
-        extracted = self._extract_reservation_info(message)
+        # Build context hint for OpenAI
+        context_hint = None
+        if conv_state.last_question == 'guests':
+            context_hint = "How many guests will be dining?"
+        elif conv_state.last_question == 'date':
+            context_hint = "When would you like to dine?"
+        elif conv_state.last_question == 'time':
+            context_hint = "What time would you prefer?"
+        
+        extracted = self._extract_reservation_info(message, context_hint)
         print(f"Extracted: intent={extracted.has_reservation_intent}, date={extracted.date}, time={extracted.time}, guests={extracted.guests}", flush=True)
         
         # Handle questions
@@ -782,7 +1112,9 @@ Keep responses brief."""
         # COLLECTING INFO STATE - Process extracted data
         # =================================================================
         
-        if conv_state.state in [BookingState.INITIAL, BookingState.COLLECTING_INFO]:
+        if conv_state.state in [BookingState.INITIAL, BookingState.COLLECTING_INFO,
+                                BookingState.AWAITING_DATE, BookingState.AWAITING_TIME, 
+                                BookingState.AWAITING_GUESTS]:
             # Update booking with any extracted info
             if extracted.date:
                 booking.date = extracted.date
@@ -798,7 +1130,7 @@ Keep responses brief."""
             conv_state.booking_details = booking
             
             # Check if reservation intent detected
-            if extracted.has_reservation_intent or conv_state.state == BookingState.COLLECTING_INFO:
+            if extracted.has_reservation_intent or conv_state.state != BookingState.INITIAL:
                 conv_state.state = BookingState.COLLECTING_INFO
                 
                 # Check for large party
@@ -836,8 +1168,8 @@ Keep responses brief."""
                         
                         return respond(AssistantResponse(
                             text=f"Great! I have your reservation:\n\n"
-                                 f"Date: {booking.date_display}\n"
-                                 f"Time: {booking.time_display}\n"
+                                 f"Date: {booking.date_display or booking.date}\n"
+                                 f"Time: {booking.time_display or booking.time}\n"
                                  f"Guests: {booking.guests}\n\n"
                                  f"Is this contact info correct?\n"
                                  f"Name: {customer_name}\n"
@@ -847,16 +1179,15 @@ Keep responses brief."""
                             conversation_state=conv_state
                         ))
                     else:
-                        conv_state.state = BookingState.AWAITING_NAME_CONFIRMATION
+                        conv_state.state = BookingState.AWAITING_NAME_INPUT
                         conv_state.booking_details = booking
                         return respond(AssistantResponse(
-                            text=f"Great! {booking.date_display} at {booking.time_display} for {booking.guests}.\n\n"
+                            text=f"Great! {booking.date_display or booking.date} at {booking.time_display or booking.time} for {booking.guests}.\n\n"
                                  f"May I have your name for the reservation?",
                             conversation_state=conv_state
                         ))
                 else:
                     # Ask for missing info
-                    conv_state.booking_details = booking
                     response = self._ask_for_missing_info(conv_state, booking)
                     return respond(response)
         
