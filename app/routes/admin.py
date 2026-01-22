@@ -910,7 +910,7 @@ def chatwoot_settings(id):
         db.session.commit()
     
     # Build the webhook URL
-    webhook_url = f"{request.url_root.rstrip('/')}api/webhook/chatwoot/{restaurant.webhook_token}"
+    webhook_url = f"{request.url_root.rstrip('/')}/api/webhook/chatwoot/{restaurant.webhook_token}"
     
     return render_template('admin/chatwoot_settings.html', 
                          restaurant=restaurant,
