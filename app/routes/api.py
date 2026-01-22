@@ -730,7 +730,9 @@ def handle_chatwoot_message(restaurant, data):
     """
     try:
         # Log the full payload for debugging
-        current_app.logger.info(f"Chatwoot payload: {json.dumps(data, default=str)[:500]}")
+        current_app.logger.info(f"=== CHATWOOT WEBHOOK RECEIVED ===")
+        current_app.logger.info(f"Restaurant ID: {restaurant.id}")
+        current_app.logger.info(f"Full payload: {json.dumps(data, default=str)[:1000]}")
 
         message_data = data.get('message', {})
         conversation_data = data.get('conversation', {})
@@ -846,16 +848,28 @@ def handle_chatwoot_conversation_created(restaurant, data):
 def send_chatwoot_response(restaurant, conversation_id, message):
     """
     Send a message back to Chatwoot conversation.
+    Uses the Chatwoot Messages API: POST /api/v1/accounts/{account_id}/conversations/{conversation_id}/messages
     """
     import requests
 
+    current_app.logger.info(f"=== SENDING TO CHATWOOT ===")
+    current_app.logger.info(f"Conversation ID: {conversation_id}")
+    current_app.logger.info(f"Message: {message[:100]}..." if len(message) > 100 else f"Message: {message}")
+    current_app.logger.info(f"Base URL: {restaurant.chatwoot_base_url}")
+    current_app.logger.info(f"Account ID: {restaurant.chatwoot_account_id}")
+    current_app.logger.info(f"API Key set: {bool(restaurant.chatwoot_api_key)}")
+
     if not all([restaurant.chatwoot_api_key, restaurant.chatwoot_base_url, restaurant.chatwoot_account_id]):
-        current_app.logger.warning(f"Chatwoot not fully configured for restaurant {restaurant.id}")
+        current_app.logger.error(f"Chatwoot NOT fully configured for restaurant {restaurant.id}")
+        current_app.logger.error(f"Missing - API Key: {not restaurant.chatwoot_api_key}, Base URL: {not restaurant.chatwoot_base_url}, Account ID: {not restaurant.chatwoot_account_id}")
         return False
 
     try:
         # Chatwoot API endpoint for sending messages
-        url = f"{restaurant.chatwoot_base_url.rstrip('/')}/api/v1/accounts/{restaurant.chatwoot_account_id}/conversations/{conversation_id}/messages"
+        base_url = restaurant.chatwoot_base_url.rstrip('/')
+        url = f"{base_url}/api/v1/accounts/{restaurant.chatwoot_account_id}/conversations/{conversation_id}/messages"
+
+        current_app.logger.info(f"Chatwoot API URL: {url}")
 
         headers = {
             'Content-Type': 'application/json',
@@ -865,20 +879,26 @@ def send_chatwoot_response(restaurant, conversation_id, message):
         payload = {
             'content': message,
             'message_type': 'outgoing',
-            'private': False
+            'private': False,
+            'content_type': 'text'
         }
+
+        current_app.logger.info(f"Sending payload: {json.dumps(payload)[:200]}")
 
         response = requests.post(url, json=payload, headers=headers, timeout=10)
 
+        current_app.logger.info(f"Chatwoot response status: {response.status_code}")
+        current_app.logger.info(f"Chatwoot response body: {response.text[:500]}")
+
         if response.status_code in [200, 201]:
-            current_app.logger.info(f"Message sent to Chatwoot conversation {conversation_id}")
+            current_app.logger.info(f"SUCCESS: Message sent to Chatwoot conversation {conversation_id}")
             return True
         else:
-            current_app.logger.error(f"Chatwoot API error: {response.status_code} - {response.text}")
+            current_app.logger.error(f"FAILED: Chatwoot API error: {response.status_code} - {response.text}")
             return False
 
     except Exception as e:
-        current_app.logger.error(f"Error sending to Chatwoot: {str(e)}")
+        current_app.logger.error(f"EXCEPTION sending to Chatwoot: {str(e)}")
         return False
 
 
