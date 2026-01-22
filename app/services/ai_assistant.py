@@ -2,17 +2,16 @@
 AI Reservation Assistant Service with OpenAI-Based Entity Extraction
 Uses Pydantic models for structured data and OpenAI for intelligent understanding.
 
-This module uses:
-1. OpenAI for intent detection and entity extraction from natural language
-2. Pydantic models for structured state management
-3. A conversational flow that only asks for missing information
+KEY FEATURE: State persistence using database to remember booking details across messages.
 
 Reservation Flow:
 1. Extract all available info from user message using OpenAI
-2. Ask only for missing required fields
-3. Confirm name/phone from incoming message
-4. Collect special requests
-5. Final confirmation and database storage
+2. Store state in database after each response
+3. Retrieve state on next message to continue conversation
+4. Ask only for missing required fields
+5. Confirm name/phone from incoming message
+6. Collect special requests
+7. Final confirmation and database storage
 """
 
 import os
@@ -110,11 +109,107 @@ class AssistantResponse(BaseModel):
 
 
 # =============================================================================
+# STATE PERSISTENCE FUNCTIONS
+# =============================================================================
+
+def save_conversation_state(restaurant_id: int, conversation_id: str, state: ConversationState, app=None):
+    """Save conversation state to database for persistence across messages."""
+    try:
+        if app:
+            with app.app_context():
+                _do_save_state(restaurant_id, conversation_id, state)
+        else:
+            _do_save_state(restaurant_id, conversation_id, state)
+    except Exception as e:
+        print(f"Error saving conversation state: {e}", flush=True)
+
+
+def _do_save_state(restaurant_id: int, conversation_id: str, state: ConversationState):
+    """Internal function to save state within app context."""
+    # Look for existing state record
+    existing = AIConversation.query.filter_by(
+        restaurant_id=restaurant_id,
+        conversation_type=f'state_{conversation_id}'
+    ).first()
+    
+    state_json = state.model_dump_json()
+    
+    if existing:
+        existing.transcript = state_json
+        existing.updated_at = datetime.utcnow()
+    else:
+        new_record = AIConversation(
+            restaurant_id=restaurant_id,
+            conversation_type=f'state_{conversation_id}',
+            transcript=state_json,
+            tokens_used=0
+        )
+        db.session.add(new_record)
+    
+    db.session.commit()
+    print(f"Saved state for conversation {conversation_id}: {state.state}", flush=True)
+
+
+def load_conversation_state(restaurant_id: int, conversation_id: str, app=None) -> Optional[ConversationState]:
+    """Load conversation state from database."""
+    try:
+        if app:
+            with app.app_context():
+                return _do_load_state(restaurant_id, conversation_id)
+        else:
+            return _do_load_state(restaurant_id, conversation_id)
+    except Exception as e:
+        print(f"Error loading conversation state: {e}", flush=True)
+        return None
+
+
+def _do_load_state(restaurant_id: int, conversation_id: str) -> Optional[ConversationState]:
+    """Internal function to load state within app context."""
+    record = AIConversation.query.filter_by(
+        restaurant_id=restaurant_id,
+        conversation_type=f'state_{conversation_id}'
+    ).first()
+    
+    if record and record.transcript:
+        try:
+            state = ConversationState.model_validate_json(record.transcript)
+            print(f"Loaded state for conversation {conversation_id}: {state.state}", flush=True)
+            print(f"Booking details: date={state.booking_details.date}, time={state.booking_details.time}, guests={state.booking_details.guests}", flush=True)
+            return state
+        except Exception as e:
+            print(f"Error parsing saved state: {e}", flush=True)
+    
+    return None
+
+
+def clear_conversation_state(restaurant_id: int, conversation_id: str, app=None):
+    """Clear conversation state from database (e.g., after completion or cancellation)."""
+    try:
+        if app:
+            with app.app_context():
+                _do_clear_state(restaurant_id, conversation_id)
+        else:
+            _do_clear_state(restaurant_id, conversation_id)
+    except Exception as e:
+        print(f"Error clearing conversation state: {e}", flush=True)
+
+
+def _do_clear_state(restaurant_id: int, conversation_id: str):
+    """Internal function to clear state within app context."""
+    AIConversation.query.filter_by(
+        restaurant_id=restaurant_id,
+        conversation_type=f'state_{conversation_id}'
+    ).delete()
+    db.session.commit()
+    print(f"Cleared state for conversation {conversation_id}", flush=True)
+
+
+# =============================================================================
 # RESERVATION ASSISTANT CLASS
 # =============================================================================
 
 class ReservationAssistant:
-    """AI-powered reservation assistant with OpenAI-based entity extraction"""
+    """AI-powered reservation assistant with OpenAI-based entity extraction and state persistence"""
     
     MAX_GUESTS_WITHOUT_HANDOVER = 8
     
@@ -187,7 +282,7 @@ Extract the following information if present in the user's message:
    - "noon" = "12:00"
    - "evening" = "19:00"
 5. time_display: Human readable time like "6:00 PM"
-6. guests: Number of people (look for "for 4", "party of 2", "2 people", etc.)
+6. guests: Number of people (look for "for 4", "party of 2", "2 people", "we will be 7", etc.)
 7. name: Customer name if explicitly mentioned
 8. is_question: true if user is asking a question about the restaurant (hours, menu, location, etc.)
 9. question_topic: What the question is about if is_question is true
@@ -195,6 +290,7 @@ Extract the following information if present in the user's message:
 IMPORTANT: 
 - "dine" means reservation intent
 - "die" is likely a transcription error for "dine"
+- "we will be X people" means X guests
 - Be generous in detecting reservation intent
 - Extract ALL available information from the message
 
@@ -276,15 +372,15 @@ Return a JSON object with these fields. Use null for missing fields."""
     def _get_yes_no_buttons(self) -> List[ButtonOption]:
         """Get yes/no confirmation buttons"""
         return [
-            ButtonOption(value='yes', display='✓ Yes, correct'),
-            ButtonOption(value='no', display='✗ No, update')
+            ButtonOption(value='yes', display='Yes, correct'),
+            ButtonOption(value='no', display='No, update')
         ]
     
     def _get_confirm_buttons(self) -> List[ButtonOption]:
         """Get final confirmation buttons"""
         return [
-            ButtonOption(value='confirm', display='✓ Confirm Reservation'),
-            ButtonOption(value='cancel', display='✗ Cancel')
+            ButtonOption(value='confirm', display='Confirm Reservation'),
+            ButtonOption(value='cancel', display='Cancel')
         ]
     
     def _get_special_request_buttons(self) -> List[ButtonOption]:
@@ -398,27 +494,6 @@ Return a JSON object with these fields. Use null for missing fields."""
                 db.session.rollback()
                 return {'success': False, 'error': str(e)}
     
-    def _restore_state(self, conversation_history: List[Dict]) -> ConversationState:
-        """Restore conversation state from history"""
-        if conversation_history:
-            for msg in reversed(conversation_history):
-                if msg.get('role') == 'assistant' and msg.get('conversation_state'):
-                    try:
-                        return ConversationState.model_validate(msg['conversation_state'])
-                    except Exception:
-                        pass
-        
-        state = ConversationState(
-            restaurant_id=self.restaurant_id,
-            timezone=self._timezone
-        )
-        
-        if self._customer_info:
-            state.incoming_customer_name = self._customer_info.get('name')
-            state.incoming_customer_phone = self._customer_info.get('phone')
-        
-        return state
-    
     def _ask_for_missing_info(self, conv_state: ConversationState, booking: BookingDetails) -> AssistantResponse:
         """Generate response asking for the next missing piece of information"""
         missing = booking.get_missing_fields()
@@ -491,6 +566,7 @@ Keep responses brief."""
         """
         Process user message and return response.
         Uses OpenAI for intelligent entity extraction.
+        State is persisted to database between messages.
         """
         self._get_restaurant_info()
         restaurant_name = self._restaurant_info.get('name', 'our restaurant')
@@ -501,8 +577,18 @@ Keep responses brief."""
         if sender_phone:
             self._customer_info['phone'] = sender_phone
         
-        # Restore state
-        conv_state = self._restore_state(conversation_history or [])
+        # Load state from database (KEY CHANGE!)
+        conv_state = None
+        if session_id:
+            conv_state = load_conversation_state(self.restaurant_id, session_id, self.app)
+        
+        # If no saved state, create new one
+        if not conv_state:
+            conv_state = ConversationState(
+                restaurant_id=self.restaurant_id,
+                timezone=self._timezone
+            )
+        
         booking = conv_state.booking_details
         
         # Update customer info in state
@@ -514,9 +600,16 @@ Keep responses brief."""
         message_lower = message.lower().strip()
         
         print(f"=== AI ASSISTANT ===", flush=True)
+        print(f"Session ID: {session_id}", flush=True)
         print(f"State: {conv_state.state}", flush=True)
         print(f"Message: {message}", flush=True)
         print(f"Booking so far: date={booking.date}, time={booking.time}, guests={booking.guests}", flush=True)
+        
+        # Helper function to save state and return response
+        def respond(response: AssistantResponse) -> str:
+            if session_id:
+                save_conversation_state(self.restaurant_id, session_id, response.conversation_state, self.app)
+            return response.model_dump_json()
         
         # =================================================================
         # HANDLE STATES THAT EXPECT SPECIFIC INPUT
@@ -524,25 +617,23 @@ Keep responses brief."""
         
         # --- AWAITING NAME CONFIRMATION ---
         if conv_state.state == BookingState.AWAITING_NAME_CONFIRMATION:
-            if message_lower in ['yes', 'correct', 'y', 'confirm', 'that\'s right', 'thats right']:
+            if message_lower in ['yes', 'correct', 'y', 'confirm', 'that\'s right', 'thats right', 'si', 'ja']:
                 conv_state.state = BookingState.AWAITING_SPECIAL_REQUESTS
-                response = AssistantResponse(
+                return respond(AssistantResponse(
                     text="Do you have any special requests?",
                     buttons=self._get_special_request_buttons(),
                     button_type='special_requests',
                     conversation_state=conv_state
-                )
-                return response.model_dump_json()
+                ))
             
             elif message_lower in ['no', 'wrong', 'n', 'update', 'change']:
                 booking.customer_name = None
                 booking.customer_phone = None
                 conv_state.booking_details = booking
-                response = AssistantResponse(
+                return respond(AssistantResponse(
                     text="Please provide your name for the reservation:",
                     conversation_state=conv_state
-                )
-                return response.model_dump_json()
+                ))
             
             else:
                 # User is providing their name
@@ -552,20 +643,18 @@ Keep responses brief."""
                         booking.customer_phone = conv_state.incoming_customer_phone
                         conv_state.state = BookingState.AWAITING_SPECIAL_REQUESTS
                         conv_state.booking_details = booking
-                        response = AssistantResponse(
+                        return respond(AssistantResponse(
                             text="Do you have any special requests?",
                             buttons=self._get_special_request_buttons(),
                             button_type='special_requests',
                             conversation_state=conv_state
-                        )
-                        return response.model_dump_json()
+                        ))
                     else:
                         conv_state.booking_details = booking
-                        response = AssistantResponse(
+                        return respond(AssistantResponse(
                             text=f"Thanks {booking.customer_name.split()[0]}! What's your phone number?",
                             conversation_state=conv_state
-                        )
-                        return response.model_dump_json()
+                        ))
                 
                 # Check if it's a phone number
                 digits = ''.join(c for c in message if c.isdigit())
@@ -573,13 +662,12 @@ Keep responses brief."""
                     booking.customer_phone = message.strip()
                     conv_state.state = BookingState.AWAITING_SPECIAL_REQUESTS
                     conv_state.booking_details = booking
-                    response = AssistantResponse(
+                    return respond(AssistantResponse(
                         text="Do you have any special requests?",
                         buttons=self._get_special_request_buttons(),
                         button_type='special_requests',
                         conversation_state=conv_state
-                    )
-                    return response.model_dump_json()
+                    ))
         
         # --- AWAITING SPECIAL REQUESTS ---
         elif conv_state.state == BookingState.AWAITING_SPECIAL_REQUESTS:
@@ -594,11 +682,10 @@ Keep responses brief."""
             
             if message_lower in special_map:
                 if message_lower == 'other':
-                    response = AssistantResponse(
+                    return respond(AssistantResponse(
                         text="Please type your special request:",
                         conversation_state=conv_state
-                    )
-                    return response.model_dump_json()
+                    ))
                 booking.special_requests = special_map[message_lower]
             else:
                 booking.special_requests = message.strip() if message_lower != 'none' else None
@@ -607,57 +694,59 @@ Keep responses brief."""
             conv_state.booking_details = booking
             
             summary = (
-                f"📋 **Reservation Summary**\n\n"
-                f"📅 {booking.date_display or booking.date}\n"
-                f"🕐 {booking.time_display or booking.time}\n"
-                f"👥 {booking.guests} guest{'s' if booking.guests > 1 else ''}\n"
-                f"👤 {booking.customer_name}\n"
-                f"📞 {booking.customer_phone}\n"
+                f"Reservation Summary:\n\n"
+                f"Date: {booking.date_display or booking.date}\n"
+                f"Time: {booking.time_display or booking.time}\n"
+                f"Guests: {booking.guests}\n"
+                f"Name: {booking.customer_name}\n"
+                f"Phone: {booking.customer_phone}\n"
             )
             if booking.special_requests:
-                summary += f"📝 {booking.special_requests}\n"
-            summary += f"\n🍽️ {restaurant_name}\n\nConfirm reservation?"
+                summary += f"Special requests: {booking.special_requests}\n"
+            summary += f"\nRestaurant: {restaurant_name}\n\nConfirm reservation?"
             
-            response = AssistantResponse(
+            return respond(AssistantResponse(
                 text=summary,
                 buttons=self._get_confirm_buttons(),
                 button_type='final_confirm',
                 conversation_state=conv_state
-            )
-            return response.model_dump_json()
+            ))
         
         # --- AWAITING FINAL CONFIRMATION ---
         elif conv_state.state == BookingState.AWAITING_FINAL_CONFIRMATION:
-            if message_lower in ['confirm', 'yes', 'y', 'book']:
+            if message_lower in ['confirm', 'yes', 'y', 'book', 'si', 'ja']:
                 result = self._make_reservation(booking)
                 
                 if result['success']:
                     conv_state.state = BookingState.COMPLETED
-                    response = AssistantResponse(
-                        text=f"🎉 **Confirmed!**\n\n"
-                             f"📅 {booking.date_display} at {booking.time_display}\n"
-                             f"👥 {booking.guests} guests\n"
-                             f"📍 {result['table_name']}\n"
-                             f"🎫 #{result['reservation_id']}\n\n"
+                    # Clear state after successful booking
+                    if session_id:
+                        clear_conversation_state(self.restaurant_id, session_id, self.app)
+                    return respond(AssistantResponse(
+                        text=f"Confirmed!\n\n"
+                             f"Date: {booking.date_display} at {booking.time_display}\n"
+                             f"Guests: {booking.guests}\n"
+                             f"Table: {result['table_name']}\n"
+                             f"Confirmation #: {result['reservation_id']}\n\n"
                              f"See you at {restaurant_name}!",
                         conversation_state=conv_state
-                    )
-                    return response.model_dump_json()
+                    ))
                 else:
-                    response = AssistantResponse(
+                    return respond(AssistantResponse(
                         text=f"Sorry, there was an issue: {result.get('error')}. Please try again.",
                         conversation_state=conv_state
-                    )
-                    return response.model_dump_json()
+                    ))
             
             elif message_lower in ['cancel', 'no', 'n']:
                 conv_state.state = BookingState.INITIAL
                 conv_state.booking_details = BookingDetails()
-                response = AssistantResponse(
+                # Clear state on cancellation
+                if session_id:
+                    clear_conversation_state(self.restaurant_id, session_id, self.app)
+                return respond(AssistantResponse(
                     text="Reservation cancelled. How else can I help?",
                     conversation_state=conv_state
-                )
-                return response.model_dump_json()
+                ))
         
         # --- HANDOVER TO HUMAN ---
         elif conv_state.state == BookingState.HANDOVER_TO_HUMAN:
@@ -669,11 +758,10 @@ Keep responses brief."""
                 conv_state.booking_details = booking
             
             conv_state.state = BookingState.COMPLETED
-            response = AssistantResponse(
+            return respond(AssistantResponse(
                 text="Thank you! Our team will contact you within 24 hours.",
                 conversation_state=conv_state
-            )
-            return response.model_dump_json()
+            ))
         
         # =================================================================
         # EXTRACT INFO FROM MESSAGE USING OPENAI
@@ -685,11 +773,10 @@ Keep responses brief."""
         # Handle questions
         if extracted.is_question and not extracted.has_reservation_intent:
             answer = self._answer_question(message, extracted.question_topic)
-            response = AssistantResponse(
+            return respond(AssistantResponse(
                 text=answer,
                 conversation_state=conv_state
-            )
-            return response.model_dump_json()
+            ))
         
         # =================================================================
         # COLLECTING INFO STATE - Process extracted data
@@ -724,17 +811,16 @@ Keep responses brief."""
                     customer_name = conv_state.incoming_customer_name or "Guest"
                     customer_phone = conv_state.incoming_customer_phone or "Not provided"
                     
-                    response = AssistantResponse(
+                    return respond(AssistantResponse(
                         text=f"For {booking.guests} guests, our staff will assist you personally.\n\n"
-                             f"📋 **Your Request:**\n"
-                             f"• Date: {booking.date_display or booking.date or 'TBD'}\n"
-                             f"• Time: {booking.time_display or booking.time or 'TBD'}\n"
-                             f"• Guests: {booking.guests}\n\n"
-                             f"📞 **Contact:** {customer_name} ({customer_phone})\n\n"
+                             f"Your Request:\n"
+                             f"- Date: {booking.date_display or booking.date or 'TBD'}\n"
+                             f"- Time: {booking.time_display or booking.time or 'TBD'}\n"
+                             f"- Guests: {booking.guests}\n\n"
+                             f"Contact: {customer_name} ({customer_phone})\n\n"
                              f"Our team will contact you within 24 hours. Any special requests?",
                         conversation_state=conv_state
-                    )
-                    return response.model_dump_json()
+                    ))
                 
                 # Check if all required info is collected
                 if booking.is_complete():
@@ -748,47 +834,45 @@ Keep responses brief."""
                         conv_state.state = BookingState.AWAITING_NAME_CONFIRMATION
                         conv_state.booking_details = booking
                         
-                        response = AssistantResponse(
+                        return respond(AssistantResponse(
                             text=f"Great! I have your reservation:\n\n"
-                                 f"📅 {booking.date_display}\n"
-                                 f"🕐 {booking.time_display}\n"
-                                 f"👥 {booking.guests} guests\n\n"
+                                 f"Date: {booking.date_display}\n"
+                                 f"Time: {booking.time_display}\n"
+                                 f"Guests: {booking.guests}\n\n"
                                  f"Is this contact info correct?\n"
-                                 f"👤 {customer_name}\n"
-                                 f"📞 {customer_phone}",
+                                 f"Name: {customer_name}\n"
+                                 f"Phone: {customer_phone}",
                             buttons=self._get_yes_no_buttons(),
                             button_type='confirm_contact',
                             conversation_state=conv_state
-                        )
-                        return response.model_dump_json()
+                        ))
                     else:
                         conv_state.state = BookingState.AWAITING_NAME_CONFIRMATION
                         conv_state.booking_details = booking
-                        response = AssistantResponse(
+                        return respond(AssistantResponse(
                             text=f"Great! {booking.date_display} at {booking.time_display} for {booking.guests}.\n\n"
                                  f"May I have your name for the reservation?",
                             conversation_state=conv_state
-                        )
-                        return response.model_dump_json()
+                        ))
                 else:
                     # Ask for missing info
                     conv_state.booking_details = booking
-                    return self._ask_for_missing_info(conv_state, booking).model_dump_json()
+                    response = self._ask_for_missing_info(conv_state, booking)
+                    return respond(response)
         
         # =================================================================
         # DEFAULT: Welcome message
         # =================================================================
         
-        response = AssistantResponse(
-            text=f"Welcome to {restaurant_name}! 👋\n\n"
+        return respond(AssistantResponse(
+            text=f"Welcome to {restaurant_name}!\n\n"
                  "I can help you make a reservation. Just tell me:\n"
-                 "• When you'd like to dine\n"
-                 "• What time\n"
-                 "• How many guests\n\n"
+                 "- When you'd like to dine\n"
+                 "- What time\n"
+                 "- How many guests\n\n"
                  "For example: \"Table for 4 tomorrow at 7pm\"",
             conversation_state=conv_state
-        )
-        return response.model_dump_json()
+        ))
 
 
 # =============================================================================
