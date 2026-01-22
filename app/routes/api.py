@@ -822,13 +822,26 @@ def handle_agent_bot_message(restaurant, payload):
         
         # Generate AI response
         print(f"=== GENERATING AI RESPONSE ===", flush=True)
+        print(f"Customer info - Name: {sender_name}, Phone: {phone_number}", flush=True)
         try:
             # Try using OpenAI Agents SDK first
             try:
                 print("Trying OpenAI Agents SDK...", flush=True)
                 from app.services.ai_assistant import get_assistant
-                assistant = get_assistant(restaurant.id, current_app._get_current_object())
-                ai_response = assistant.chat_sync(content, str(conversation_id), [])
+                # Pass customer info from incoming message for reservation flow
+                assistant = get_assistant(
+                    restaurant.id, 
+                    current_app._get_current_object(),
+                    customer_name=sender_name,
+                    customer_phone=phone_number
+                )
+                ai_response = assistant.chat_sync(
+                    content, 
+                    str(conversation_id), 
+                    [],
+                    sender_name=sender_name,
+                    sender_phone=phone_number
+                )
                 print(f"AI Response (Agents): {ai_response[:200] if ai_response else 'None'}", flush=True)
             except Exception as agents_error:
                 print(f"Agents SDK failed: {agents_error}, using fallback...", flush=True)
@@ -984,9 +997,11 @@ def handle_chatwoot_message(restaurant, data):
             print("ERROR: No conversation_id found in payload", flush=True)
             return jsonify({'status': 'error', 'reason': 'No conversation_id'}), 400
 
-        # Get sender info
+        # Get sender info - extract name and phone from sender object
         sender_name = sender.get('name', 'Customer')
+        sender_phone = sender.get('phone_number') or sender.get('phone') or sender.get('identifier')
         print(f"Sender name: {sender_name}", flush=True)
+        print(f"Sender phone: {sender_phone}", flush=True)
 
         # Generate AI response
         print(f"=== GENERATING AI RESPONSE ===", flush=True)
@@ -995,8 +1010,20 @@ def handle_chatwoot_message(restaurant, data):
             try:
                 print("Trying OpenAI Agents SDK...", flush=True)
                 from app.services.ai_assistant import get_assistant
-                assistant = get_assistant(restaurant.id, current_app._get_current_object())
-                ai_response = assistant.chat_sync(content, str(conversation_id), [])
+                # Pass customer info from incoming message for reservation flow
+                assistant = get_assistant(
+                    restaurant.id, 
+                    current_app._get_current_object(),
+                    customer_name=sender_name,
+                    customer_phone=sender_phone
+                )
+                ai_response = assistant.chat_sync(
+                    content, 
+                    str(conversation_id), 
+                    [],
+                    sender_name=sender_name,
+                    sender_phone=sender_phone
+                )
                 print(f"AI Response (Agents): {ai_response[:200]}", flush=True)
             except Exception as agents_error:
                 # Fall back to standard OpenAI API
