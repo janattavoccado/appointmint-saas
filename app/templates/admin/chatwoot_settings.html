@@ -1,0 +1,239 @@
+{% extends "admin/base.html" %}
+
+{% block title %}Chatwoot Integration - {{ restaurant.name }}{% endblock %}
+
+{% block content %}
+<div class="content-header">
+    <div class="header-left">
+        <a href="{{ url_for('admin.restaurant_detail', id=restaurant.id) }}" class="btn btn-secondary">
+            ← Back to Restaurant
+        </a>
+        <h1>Chatwoot Integration</h1>
+        <p class="subtitle">Connect {{ restaurant.name }} to Chatwoot for AI-powered customer messaging</p>
+    </div>
+</div>
+
+<div class="content-body">
+    <!-- Webhook URL Section -->
+    <div class="card">
+        <div class="card-header">
+            <h2>Webhook URL</h2>
+        </div>
+        <div class="card-body">
+            <p class="help-text">Use this webhook URL in your Chatwoot inbox settings to receive AI-powered responses.</p>
+            
+            <div class="webhook-url-container">
+                <label>Your Unique Webhook URL:</label>
+                <div class="input-group">
+                    <input type="text" id="webhookUrl" class="form-control" 
+                           value="{{ webhook_url }}" readonly>
+                    <button type="button" class="btn btn-primary" onclick="copyWebhookUrl()">
+                        📋 Copy
+                    </button>
+                </div>
+                <small class="text-muted">This URL is unique to your restaurant. Keep it secure!</small>
+            </div>
+            
+            <div class="webhook-test" style="margin-top: 20px;">
+                <a href="{{ webhook_url }}/test" target="_blank" class="btn btn-secondary">
+                    🔗 Test Webhook Connection
+                </a>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Chatwoot Configuration Section -->
+    <div class="card" style="margin-top: 20px;">
+        <div class="card-header">
+            <h2>Chatwoot API Configuration</h2>
+        </div>
+        <div class="card-body">
+            <p class="help-text">Configure these settings to allow AppointMint to send responses back to Chatwoot.</p>
+            
+            <form method="POST" action="{{ url_for('admin.save_chatwoot_settings', id=restaurant.id) }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                
+                <div class="form-group">
+                    <label for="chatwoot_base_url">Chatwoot Instance URL</label>
+                    <input type="url" id="chatwoot_base_url" name="chatwoot_base_url" 
+                           class="form-control" placeholder="https://app.chatwoot.com"
+                           value="{{ restaurant.chatwoot_base_url or '' }}">
+                    <small class="text-muted">Your Chatwoot instance URL (e.g., https://app.chatwoot.com or your self-hosted URL)</small>
+                </div>
+                
+                <div class="form-group">
+                    <label for="chatwoot_account_id">Account ID</label>
+                    <input type="text" id="chatwoot_account_id" name="chatwoot_account_id" 
+                           class="form-control" placeholder="1"
+                           value="{{ restaurant.chatwoot_account_id or '' }}">
+                    <small class="text-muted">Your Chatwoot account ID (found in the URL: /app/accounts/{ID}/...)</small>
+                </div>
+                
+                <div class="form-group">
+                    <label for="chatwoot_inbox_id">Inbox ID</label>
+                    <input type="text" id="chatwoot_inbox_id" name="chatwoot_inbox_id" 
+                           class="form-control" placeholder="1"
+                           value="{{ restaurant.chatwoot_inbox_id or '' }}">
+                    <small class="text-muted">The inbox ID you want to connect (found in inbox settings)</small>
+                </div>
+                
+                <div class="form-group">
+                    <label for="chatwoot_api_key">API Access Token</label>
+                    <input type="password" id="chatwoot_api_key" name="chatwoot_api_key" 
+                           class="form-control" placeholder="Enter your Chatwoot API token"
+                           value="{{ restaurant.chatwoot_api_key or '' }}">
+                    <small class="text-muted">Your Chatwoot API access token (Profile Settings → Access Token)</small>
+                </div>
+                
+                <div class="form-actions">
+                    <button type="submit" class="btn btn-primary">Save Configuration</button>
+                </div>
+            </form>
+        </div>
+    </div>
+    
+    <!-- Setup Instructions -->
+    <div class="card" style="margin-top: 20px;">
+        <div class="card-header">
+            <h2>Setup Instructions</h2>
+        </div>
+        <div class="card-body">
+            <div class="instructions">
+                <h3>Step 1: Create a Webhook in Chatwoot</h3>
+                <ol>
+                    <li>Go to your Chatwoot dashboard</li>
+                    <li>Navigate to <strong>Settings → Integrations → Webhooks</strong></li>
+                    <li>Click <strong>"Add new webhook"</strong></li>
+                    <li>Paste your webhook URL from above</li>
+                    <li>Select events: <code>message_created</code>, <code>conversation_created</code></li>
+                    <li>Save the webhook</li>
+                </ol>
+                
+                <h3>Step 2: Get Your API Access Token</h3>
+                <ol>
+                    <li>In Chatwoot, click on your profile icon</li>
+                    <li>Go to <strong>Profile Settings</strong></li>
+                    <li>Find <strong>"Access Token"</strong> section</li>
+                    <li>Copy the token and paste it above</li>
+                </ol>
+                
+                <h3>Step 3: Find Your Account and Inbox IDs</h3>
+                <ol>
+                    <li>Your Account ID is in the URL: <code>/app/accounts/<strong>{ACCOUNT_ID}</strong>/...</code></li>
+                    <li>Your Inbox ID is found in: <strong>Settings → Inboxes → Select inbox → URL shows ID</strong></li>
+                </ol>
+                
+                <h3>Step 4: Test the Integration</h3>
+                <ol>
+                    <li>Save your configuration above</li>
+                    <li>Send a test message to your Chatwoot inbox</li>
+                    <li>The AI should respond automatically!</li>
+                </ol>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Regenerate Token Section -->
+    <div class="card" style="margin-top: 20px;">
+        <div class="card-header">
+            <h2>Security</h2>
+        </div>
+        <div class="card-body">
+            <p class="help-text">If you believe your webhook URL has been compromised, you can regenerate the token.</p>
+            <form method="POST" action="{{ url_for('admin.regenerate_webhook_token', id=restaurant.id) }}" 
+                  onsubmit="return confirm('Are you sure? This will invalidate the current webhook URL and you will need to update it in Chatwoot.');">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button type="submit" class="btn btn-danger">🔄 Regenerate Webhook Token</button>
+            </form>
+        </div>
+    </div>
+</div>
+
+<style>
+.webhook-url-container {
+    background: #f8f9fa;
+    padding: 20px;
+    border-radius: 8px;
+    margin-top: 15px;
+}
+
+.webhook-url-container label {
+    display: block;
+    font-weight: 600;
+    margin-bottom: 10px;
+}
+
+.input-group {
+    display: flex;
+    gap: 10px;
+}
+
+.input-group .form-control {
+    flex: 1;
+    font-family: monospace;
+    font-size: 14px;
+}
+
+.instructions h3 {
+    margin-top: 25px;
+    margin-bottom: 10px;
+    color: #333;
+    font-size: 16px;
+}
+
+.instructions ol {
+    margin-left: 20px;
+    line-height: 1.8;
+}
+
+.instructions code {
+    background: #e9ecef;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 13px;
+}
+
+.help-text {
+    color: #666;
+    margin-bottom: 15px;
+}
+
+.form-group {
+    margin-bottom: 20px;
+}
+
+.form-group label {
+    display: block;
+    font-weight: 600;
+    margin-bottom: 5px;
+}
+
+.form-group .text-muted {
+    display: block;
+    margin-top: 5px;
+    font-size: 13px;
+}
+
+.form-actions {
+    margin-top: 25px;
+    padding-top: 20px;
+    border-top: 1px solid #eee;
+}
+</style>
+
+<script>
+function copyWebhookUrl() {
+    const urlInput = document.getElementById('webhookUrl');
+    urlInput.select();
+    urlInput.setSelectionRange(0, 99999);
+    
+    navigator.clipboard.writeText(urlInput.value).then(() => {
+        alert('Webhook URL copied to clipboard!');
+    }).catch(err => {
+        // Fallback for older browsers
+        document.execCommand('copy');
+        alert('Webhook URL copied to clipboard!');
+    });
+}
+</script>
+{% endblock %}

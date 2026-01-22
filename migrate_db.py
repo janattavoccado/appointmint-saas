@@ -6,18 +6,25 @@ Database Migration Script for Heroku
 This script runs during Heroku's release phase to:
 1. Create all database tables
 2. Create the default admin user if not exists
+3. Generate webhook tokens for restaurants without one
 
 This is called automatically by the Procfile release command.
 """
 
 import os
 import sys
+import secrets
 
 # Set production environment
 os.environ['FLASK_ENV'] = 'production'
 
 from app import create_app
-from app.models import db, User, ROLE_ADMIN
+from app.models import db, User, Restaurant, ROLE_ADMIN
+
+
+def generate_webhook_token():
+    """Generate a unique webhook token"""
+    return secrets.token_urlsafe(32)
 
 
 def migrate():
@@ -59,6 +66,20 @@ def migrate():
                 print("  Password: (set via ADMIN_PASSWORD env var or 'admin123')")
             else:
                 print("✓ Admin user already exists")
+            
+            # Generate webhook tokens for restaurants without one
+            print("Checking restaurant webhook tokens...")
+            restaurants_without_token = Restaurant.query.filter(
+                (Restaurant.webhook_token == None) | (Restaurant.webhook_token == '')
+            ).all()
+            
+            if restaurants_without_token:
+                for restaurant in restaurants_without_token:
+                    restaurant.webhook_token = generate_webhook_token()
+                    print(f"  ✓ Generated webhook token for '{restaurant.name}'")
+                db.session.commit()
+            else:
+                print("✓ All restaurants have webhook tokens")
             
             print()
             print("=" * 60)

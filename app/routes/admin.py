@@ -6,8 +6,19 @@ from app.models import (
 )
 from functools import wraps
 from werkzeug.security import generate_password_hash
+import secrets
 
 admin_bp = Blueprint('admin', __name__)
+
+
+def generate_webhook_token():
+    """Generate a unique webhook token for a restaurant"""
+    while True:
+        token = secrets.token_urlsafe(32)
+        # Ensure token is unique
+        existing = Restaurant.query.filter_by(webhook_token=token).first()
+        if not existing:
+            return token
 
 
 # =============================================================================
@@ -354,6 +365,9 @@ def add_restaurant():
         else:
             tenant_id = current_user.tenant_id
         
+        # Generate unique webhook token for Chatwoot integration
+        webhook_token = generate_webhook_token()
+        
         restaurant = Restaurant(
             tenant_id=tenant_id,
             name=request.form.get('name'),
@@ -365,7 +379,8 @@ def add_restaurant():
             email=request.form.get('email'),
             cuisine_type=request.form.get('cuisine_type'),
             description=request.form.get('description'),
-            timezone=request.form.get('timezone', 'UTC')
+            timezone=request.form.get('timezone', 'UTC'),
+            webhook_token=webhook_token
         )
         db.session.add(restaurant)
         db.session.commit()
@@ -871,3 +886,79 @@ def download_knowledge_base(id):
         mimetype='text/markdown',
         headers={'Content-Disposition': f'attachment; filename={filename}'}
     )
+
+
+
+# =============================================================================
+# CHATWOOT INTEGRATION
+# =============================================================================
+
+@admin_bp.route('/restaurants/<int:id>/chatwoot', methods=['GET'])
+@login_required
+@tenant_superuser_required
+def chatwoot_settings(id):
+    """View Chatwoot integration settings for a restaurant"""
+    restaurant = Restaurant.query.get_or_404(id)
+    
+    if not can_access_restaurant(restaurant):
+        flash('Access denied.', 'error')
+        return redirect(url_for('admin.restaurants'))
+    
+    # Generate webhook token if not exists (for existing restaurants)
+    if not restaurant.webhook_token:
+        restaurant.webhook_token = generate_webhook_token()
+        db.session.commit()
+    
+    # Build the webhook URL
+    webhook_url = f"{request.url_root.rstrip('/')}api/webhook/chatwoot/{restaurant.webhook_token}"
+    
+    return render_template('admin/chatwoot_settings.html', 
+                         restaurant=restaurant,
+                         webhook_url=webhook_url)
+
+
+@admin_bp.route('/restaurants/<int:id>/chatwoot/save', methods=['POST'])
+@login_required
+@tenant_superuser_required
+def save_chatwoot_settings(id):
+    """Save Chatwoot configuration for a restaurant"""
+    restaurant = Restaurant.query.get_or_404(id)
+    
+    if not can_access_restaurant(restaurant):
+        flash('Access denied.', 'error')
+        return redirect(url_for('admin.restaurants'))
+    
+    # Update Chatwoot settings
+    restaurant.chatwoot_base_url = request.form.get('chatwoot_base_url', '').strip()
+    restaurant.chatwoot_account_id = request.form.get('chatwoot_account_id', '').strip()
+    restaurant.chatwoot_inbox_id = request.form.get('chatwoot_inbox_id', '').strip()
+    
+    # Only update API key if provided (don't clear existing)
+    api_key = request.form.get('chatwoot_api_key', '').strip()
+    if api_key:
+        restaurant.chatwoot_api_key = api_key
+    
+    db.session.commit()
+    flash('Chatwoot settings saved successfully!', 'success')
+    
+    return redirect(url_for('admin.chatwoot_settings', id=id))
+
+
+@admin_bp.route('/restaurants/<int:id>/chatwoot/regenerate-token', methods=['POST'])
+@login_required
+@tenant_superuser_required
+def regenerate_webhook_token(id):
+    """Regenerate the webhook token for a restaurant"""
+    restaurant = Restaurant.query.get_or_404(id)
+    
+    if not can_access_restaurant(restaurant):
+        flash('Access denied.', 'error')
+        return redirect(url_for('admin.restaurants'))
+    
+    # Generate new token
+    restaurant.webhook_token = generate_webhook_token()
+    db.session.commit()
+    
+    flash('Webhook token regenerated. Please update the webhook URL in Chatwoot.', 'warning')
+    
+    return redirect(url_for('admin.chatwoot_settings', id=id))

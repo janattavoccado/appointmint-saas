@@ -673,3 +673,213 @@ def staff_update_status():
     except Exception as e:
         current_app.logger.error(f"Staff Update Status Error: {str(e)}")
         return jsonify({'error': str(e)}), 500
+
+
+
+# =============================================================================
+# CHATWOOT WEBHOOK INTEGRATION
+# =============================================================================
+
+@api_bp.route('/webhook/chatwoot/<webhook_token>', methods=['POST'])
+def chatwoot_webhook(webhook_token):
+    """
+    Chatwoot webhook endpoint for receiving messages and sending AI responses.
+    
+    Each restaurant has a unique webhook token for security.
+    
+    Chatwoot sends webhook events like:
+    - message_created: When a new message is received
+    - conversation_created: When a new conversation starts
+    - conversation_status_changed: When conversation status changes
+    
+    Webhook URL format: https://your-domain.com/api/webhook/chatwoot/{webhook_token}
+    """
+    # Find restaurant by webhook token
+    restaurant = Restaurant.query.filter_by(webhook_token=webhook_token).first()
+    
+    if not restaurant:
+        current_app.logger.warning(f"Invalid webhook token: {webhook_token}")
+        return jsonify({'error': 'Invalid webhook token'}), 401
+    
+    # Get webhook payload
+    data = request.get_json()
+    
+    if not data:
+        return jsonify({'error': 'No data received'}), 400
+    
+    event_type = data.get('event')
+    
+    current_app.logger.info(f"Chatwoot webhook received for restaurant {restaurant.id}: {event_type}")
+    
+    # Handle message_created event
+    if event_type == 'message_created':
+        return handle_chatwoot_message(restaurant, data)
+    
+    # Handle conversation_created event
+    elif event_type == 'conversation_created':
+        return handle_chatwoot_conversation_created(restaurant, data)
+    
+    # Acknowledge other events
+    return jsonify({'status': 'received', 'event': event_type})
+
+
+def handle_chatwoot_message(restaurant, data):
+    """
+    Handle incoming message from Chatwoot and send AI response.
+    """
+    try:
+        message_data = data.get('message', {})
+        conversation_data = data.get('conversation', {})
+        
+        # Only respond to incoming messages (from customers, not agents)
+        message_type = message_data.get('message_type')
+        if message_type != 'incoming':
+            return jsonify({'status': 'ignored', 'reason': 'Not an incoming message'})
+        
+        # Get message content
+        content = message_data.get('content', '')
+        if not content:
+            return jsonify({'status': 'ignored', 'reason': 'Empty message'})
+        
+        # Get conversation ID for session tracking
+        conversation_id = conversation_data.get('id')
+        
+        # Get sender info
+        sender = message_data.get('sender', {})
+        sender_name = sender.get('name', 'Customer')
+        
+        current_app.logger.info(f"Processing message from {sender_name}: {content[:50]}...")
+        
+        # Generate AI response
+        try:
+            # Try using OpenAI Agents SDK first
+            try:
+                from app.services.ai_assistant import get_assistant
+                assistant = get_assistant(restaurant.id, current_app._get_current_object())
+                ai_response = assistant.chat_sync(content, str(conversation_id), [])
+            except Exception as agents_error:
+                # Fall back to standard OpenAI API
+                current_app.logger.warning(f"Agents SDK failed, using fallback: {agents_error}")
+                from app.services.ai_assistant_fallback import ReservationAssistantFallback
+                assistant = ReservationAssistantFallback(restaurant.id, current_app._get_current_object())
+                ai_response = assistant.chat_sync(content, str(conversation_id), [])
+            
+            # Parse the response if it's JSON (contains buttons)
+            try:
+                response_data = json.loads(ai_response)
+                text_response = response_data.get('text', ai_response)
+            except (json.JSONDecodeError, TypeError):
+                text_response = ai_response
+            
+            # Send response back to Chatwoot
+            if restaurant.chatwoot_api_key and restaurant.chatwoot_base_url:
+                send_chatwoot_response(restaurant, conversation_id, text_response)
+            
+            # Log conversation
+            conversation = AIConversation(
+                restaurant_id=restaurant.id,
+                conversation_type='chatwoot',
+                transcript=f"User ({sender_name}): {content}\nAI: {text_response}",
+                tokens_used=0
+            )
+            db.session.add(conversation)
+            db.session.commit()
+            
+            return jsonify({
+                'status': 'success',
+                'response_sent': True
+            })
+            
+        except Exception as ai_error:
+            current_app.logger.error(f"AI response error: {str(ai_error)}")
+            return jsonify({
+                'status': 'error',
+                'error': str(ai_error)
+            }), 500
+            
+    except Exception as e:
+        current_app.logger.error(f"Chatwoot message handling error: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
+
+def handle_chatwoot_conversation_created(restaurant, data):
+    """
+    Handle new conversation created in Chatwoot.
+    Optionally send a welcome message.
+    """
+    try:
+        conversation_data = data.get('conversation', {})
+        conversation_id = conversation_data.get('id')
+        
+        # Send welcome message if configured
+        welcome_message = restaurant.widget_welcome_message or f"Hello! Welcome to {restaurant.name}. How can I help you with your reservation today?"
+        
+        if restaurant.chatwoot_api_key and restaurant.chatwoot_base_url:
+            send_chatwoot_response(restaurant, conversation_id, welcome_message)
+        
+        return jsonify({
+            'status': 'success',
+            'welcome_sent': True
+        })
+        
+    except Exception as e:
+        current_app.logger.error(f"Chatwoot conversation created error: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
+
+def send_chatwoot_response(restaurant, conversation_id, message):
+    """
+    Send a message back to Chatwoot conversation.
+    """
+    import requests
+    
+    if not all([restaurant.chatwoot_api_key, restaurant.chatwoot_base_url, restaurant.chatwoot_account_id]):
+        current_app.logger.warning(f"Chatwoot not fully configured for restaurant {restaurant.id}")
+        return False
+    
+    try:
+        # Chatwoot API endpoint for sending messages
+        url = f"{restaurant.chatwoot_base_url.rstrip('/')}/api/v1/accounts/{restaurant.chatwoot_account_id}/conversations/{conversation_id}/messages"
+        
+        headers = {
+            'Content-Type': 'application/json',
+            'api_access_token': restaurant.chatwoot_api_key
+        }
+        
+        payload = {
+            'content': message,
+            'message_type': 'outgoing',
+            'private': False
+        }
+        
+        response = requests.post(url, json=payload, headers=headers, timeout=10)
+        
+        if response.status_code in [200, 201]:
+            current_app.logger.info(f"Message sent to Chatwoot conversation {conversation_id}")
+            return True
+        else:
+            current_app.logger.error(f"Chatwoot API error: {response.status_code} - {response.text}")
+            return False
+            
+    except Exception as e:
+        current_app.logger.error(f"Error sending to Chatwoot: {str(e)}")
+        return False
+
+
+@api_bp.route('/webhook/chatwoot/<webhook_token>/test', methods=['GET'])
+def test_chatwoot_webhook(webhook_token):
+    """
+    Test endpoint to verify webhook configuration.
+    """
+    restaurant = Restaurant.query.filter_by(webhook_token=webhook_token).first()
+    
+    if not restaurant:
+        return jsonify({'error': 'Invalid webhook token'}), 401
+    
+    return jsonify({
+        'status': 'ok',
+        'restaurant_id': restaurant.id,
+        'restaurant_name': restaurant.name,
+        'chatwoot_configured': bool(restaurant.chatwoot_api_key and restaurant.chatwoot_base_url),
+        'message': 'Webhook is properly configured!'
+    })

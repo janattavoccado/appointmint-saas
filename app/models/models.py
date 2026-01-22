@@ -252,6 +252,13 @@ class Restaurant(db.Model):
     knowledge_base = db.Column(db.Text)  # Markdown content
     knowledge_base_updated_at = db.Column(db.DateTime)
     
+    # Chatwoot webhook integration
+    webhook_token = db.Column(db.String(64), unique=True)  # Unique token for webhook URL
+    chatwoot_account_id = db.Column(db.String(50))  # Chatwoot account ID
+    chatwoot_inbox_id = db.Column(db.String(50))  # Chatwoot inbox ID
+    chatwoot_api_key = db.Column(db.String(255))  # Chatwoot API access token
+    chatwoot_base_url = db.Column(db.String(255))  # Chatwoot instance URL (e.g., https://app.chatwoot.com)
+    
     # Widget settings
     widget_primary_color = db.Column(db.String(20), default='#2D8B7A')
     widget_position = db.Column(db.String(20), default='bottom-right')
