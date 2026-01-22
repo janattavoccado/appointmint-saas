@@ -23,3 +23,6 @@ stripe
 #pytz
 pytz
 
+#mem0
+mem0
+
