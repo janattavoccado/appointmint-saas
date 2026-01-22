@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Heroku Migration Script: Add Chatwoot Integration Columns
+Heroku Migration Script: Add Chatwoot Integration Columns in Postgres
 ==========================================================
 
 Run this script on Heroku to add the Chatwoot columns to the restaurants table.
@@ -22,13 +22,13 @@ def migrate():
     print("Chatwoot Migration Script for Heroku")
     print("=" * 60)
     print()
-    
+
     from app import create_app
     from app.models import db
     from sqlalchemy import text
-    
+
     app = create_app('production')
-    
+
     with app.app_context():
         try:
             # Define columns to add
@@ -39,10 +39,10 @@ def migrate():
                 ('chatwoot_api_key', 'VARCHAR(255)'),
                 ('chatwoot_base_url', 'VARCHAR(255)')
             ]
-            
+
             print("Adding Chatwoot columns to restaurants table...")
             print()
-            
+
             for col_name, col_type in columns:
                 try:
                     # PostgreSQL syntax with IF NOT EXISTS
@@ -57,10 +57,10 @@ def migrate():
                     else:
                         print(f"  ✗ Error adding '{col_name}': {e}")
                         db.session.rollback()
-            
+
             print()
             print("Generating webhook tokens for restaurants without one...")
-            
+
             # Now generate webhook tokens for existing restaurants
             try:
                 # First check which restaurants need tokens
@@ -68,23 +68,23 @@ def migrate():
                     "SELECT id, name FROM restaurants WHERE webhook_token IS NULL"
                 ))
                 restaurants = result.fetchall()
-                
+
                 for restaurant_id, restaurant_name in restaurants:
                     token = secrets.token_urlsafe(32)
                     db.session.execute(text(
                         "UPDATE restaurants SET webhook_token = :token WHERE id = :id"
                     ), {'token': token, 'id': restaurant_id})
                     print(f"  ✓ Generated token for '{restaurant_name}'")
-                
+
                 if not restaurants:
                     print("  ✓ All restaurants already have webhook tokens")
-                
+
                 db.session.commit()
-                
+
             except Exception as e:
                 print(f"  ✗ Error generating tokens: {e}")
                 db.session.rollback()
-            
+
             print()
             print("=" * 60)
             print("✅ Migration completed successfully!")
@@ -94,7 +94,7 @@ def migrate():
             print("1. Restart the app: heroku restart --app avoccado-appointmint")
             print("2. Go to Restaurant → Chatwoot button to configure")
             print()
-            
+
         except Exception as e:
             print()
             print("=" * 60)
