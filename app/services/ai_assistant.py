@@ -217,6 +217,29 @@ def _do_clear_state(restaurant_id: int, conversation_id: str):
 # CONTEXT-AWARE PARSING FUNCTIONS
 # =============================================================================
 
+def is_phone_number_like(text: str) -> bool:
+    """
+    Check if a text string looks like a phone number rather than a name.
+    Returns True if the text appears to be a phone number.
+    """
+    if not text:
+        return True
+    
+    # Remove common phone formatting characters
+    cleaned = text.replace(' ', '').replace('-', '').replace('(', '').replace(')', '').replace('+', '')
+    
+    # If mostly digits, it's a phone number
+    digit_count = sum(1 for c in cleaned if c.isdigit())
+    if len(cleaned) > 0 and digit_count / len(cleaned) > 0.6:
+        return True
+    
+    # Check for phone patterns like "+46 73 540 80 23" or "46735408023"
+    if text.startswith('+') or (len(cleaned) >= 7 and cleaned.isdigit()):
+        return True
+    
+    return False
+
+
 def parse_number_from_text(text: str) -> Optional[int]:
     """
     Extract a number from text, handling both digits and word forms.
