@@ -684,17 +684,13 @@ def staff_update_status():
 def chatwoot_webhook(webhook_token):
     """
     Chatwoot webhook endpoint for receiving messages and sending AI responses.
-
-    Each restaurant has a unique webhook token for security.
-
-    Chatwoot sends webhook events like:
-    - message_created: When a new message is received
-    - conversation_created: When a new conversation starts
-    - conversation_status_changed: When conversation status changes
+    
+    Supports both:
+    1. Regular Chatwoot webhooks (with event wrapper)
+    2. Agent Bot webhooks (direct payload without event wrapper)
 
     Webhook URL format: https://your-domain.com/api/webhook/chatwoot/{webhook_token}
     """
-    import sys
     print(f"=== WEBHOOK HIT === Token: {webhook_token}", flush=True)
     
     # Find restaurant by webhook token
@@ -707,51 +703,175 @@ def chatwoot_webhook(webhook_token):
     print(f"Restaurant found: {restaurant.id} - {restaurant.name}", flush=True)
 
     # Get webhook payload
-    data = request.get_json()
-    print(f"Payload received: {json.dumps(data, default=str)[:500]}", flush=True)
+    payload = request.get_json()
+    print(f"Payload received: {json.dumps(payload, default=str)[:1000]}", flush=True)
 
-    if not data:
+    if not payload:
         print("ERROR: No data received", flush=True)
         return jsonify({'error': 'No data received'}), 400
 
-    event_type = data.get('event')
+    # Check if this is an Agent Bot payload (no event wrapper) or regular webhook
+    event_type = payload.get('event')
     print(f"Event type: {event_type}", flush=True)
-
-    # Handle message_created event
+    
+    # Agent Bot payload - direct message format (no event wrapper)
+    # Agent Bot sends: {message_type, conversation: {id}, sender: {}, content, ...}
+    if not event_type and payload.get('message_type') is not None:
+        print("Detected Agent Bot payload format", flush=True)
+        return handle_agent_bot_message(restaurant, payload)
+    
+    # Regular webhook with event wrapper
     if event_type == 'message_created':
         print("Handling message_created event...", flush=True)
-        return handle_chatwoot_message(restaurant, data)
-
-    # Handle conversation_created event
+        return handle_chatwoot_message(restaurant, payload)
     elif event_type == 'conversation_created':
         print("Handling conversation_created event...", flush=True)
-        return handle_chatwoot_conversation_created(restaurant, data)
-
-    # Acknowledge other events
-    print(f"Unknown event type: {event_type}, acknowledging...", flush=True)
+        return handle_chatwoot_conversation_created(restaurant, payload)
+    
+    # Acknowledge other events or unknown format
+    print(f"Unknown event/format, acknowledging...", flush=True)
     return jsonify({'status': 'received', 'event': event_type})
+
+
+def handle_agent_bot_message(restaurant, payload):
+    """
+    Handle incoming message from Chatwoot Agent Bot.
+    Agent Bot payload format is different from regular webhooks - no event wrapper.
+    
+    Payload structure:
+    {
+        "message_type": "incoming" or "outgoing",
+        "conversation": {"id": 123, ...},
+        "sender": {"phone_number": "+1234567890", "name": "John", ...},
+        "content": "Hello",
+        "attachments": [...]
+    }
+    """
+    try:
+        print(f"=== AGENT BOT MESSAGE HANDLER ===", flush=True)
+        
+        # Extract data directly from payload (no message wrapper)
+        message_type = payload.get('message_type')
+        conversation_id = payload.get('conversation', {}).get('id')
+        sender = payload.get('sender', {})
+        phone_number = sender.get('phone_number')
+        sender_name = sender.get('name', 'Customer')
+        content = payload.get('content', '')
+        
+        print(f"Message type: {message_type}", flush=True)
+        print(f"Conversation ID: {conversation_id}", flush=True)
+        print(f"Sender: {sender_name} ({phone_number})", flush=True)
+        print(f"Content: {content}", flush=True)
+        
+        # Skip outgoing messages (bot's own messages)
+        if message_type == 'outgoing':
+            print("SKIPPING: Outgoing message (bot's own message)", flush=True)
+            return jsonify({'status': 'skipped_outgoing'})
+        
+        # Validate required fields
+        if not conversation_id:
+            print("ERROR: Missing conversation_id", flush=True)
+            return jsonify({'error': 'Missing conversation_id'}), 400
+        
+        if not content:
+            print("SKIPPING: Empty message content", flush=True)
+            return jsonify({'status': 'skipped_empty'})
+        
+        # Generate AI response
+        print(f"=== GENERATING AI RESPONSE ===", flush=True)
+        try:
+            # Try using OpenAI Agents SDK first
+            try:
+                print("Trying OpenAI Agents SDK...", flush=True)
+                from app.services.ai_assistant import get_assistant
+                assistant = get_assistant(restaurant.id, current_app._get_current_object())
+                ai_response = assistant.chat_sync(content, str(conversation_id), [])
+                print(f"AI Response (Agents): {ai_response[:200] if ai_response else 'None'}", flush=True)
+            except Exception as agents_error:
+                print(f"Agents SDK failed: {agents_error}, using fallback...", flush=True)
+                from app.services.ai_assistant_fallback import ReservationAssistantFallback
+                assistant = ReservationAssistantFallback(restaurant.id, current_app._get_current_object())
+                ai_response = assistant.chat_sync(content, str(conversation_id), [])
+                print(f"AI Response (Fallback): {ai_response[:200] if ai_response else 'None'}", flush=True)
+            
+            # Parse the response if it's JSON (contains buttons)
+            try:
+                response_data = json.loads(ai_response)
+                text_response = response_data.get('text', ai_response)
+            except (json.JSONDecodeError, TypeError):
+                text_response = ai_response
+            
+            print(f"Final text response: {text_response[:200] if text_response else 'None'}", flush=True)
+            
+            # Send response back to Chatwoot
+            if restaurant.chatwoot_api_key and restaurant.chatwoot_base_url:
+                print("Sending response to Chatwoot...", flush=True)
+                result = send_chatwoot_response(restaurant, conversation_id, text_response)
+                print(f"Send result: {result}", flush=True)
+            else:
+                print("WARNING: Chatwoot not configured, skipping response", flush=True)
+            
+            # Log conversation
+            conversation = AIConversation(
+                restaurant_id=restaurant.id,
+                conversation_type='chatwoot',
+                transcript=f"User ({sender_name}): {content}\nAI: {text_response}",
+                tokens_used=0
+            )
+            db.session.add(conversation)
+            db.session.commit()
+            print("Conversation logged to database", flush=True)
+            
+            return jsonify({'status': 'success', 'response_sent': True})
+            
+        except Exception as ai_error:
+            print(f"AI ERROR: {str(ai_error)}", flush=True)
+            import traceback
+            traceback.print_exc()
+            return jsonify({'status': 'error', 'error': str(ai_error)}), 500
+            
+    except Exception as e:
+        print(f"HANDLER ERROR: {str(e)}", flush=True)
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
 
 
 def handle_chatwoot_message(restaurant, data):
     """
-    Handle incoming message from Chatwoot and send AI response.
-    Supports both regular webhook and Agent Bot payload formats.
+    Handle incoming message from Chatwoot regular webhook (message_created event).
+    
+    Payload structure for message_created:
+    {
+        "event": "message_created",
+        "content": "message text",  # Content is at root level
+        "message_type": 0,  # 0=incoming, 1=outgoing
+        "conversation": {"id": 123, "messages": [...]},
+        "sender": {...}
+    }
     """
     try:
         print(f"=== HANDLE MESSAGE START ===", flush=True)
         print(f"Full payload: {json.dumps(data, default=str)[:1000]}", flush=True)
 
-        message_data = data.get('message', {})
+        # For message_created event, content and message_type are at ROOT level
+        content = data.get('content', '')
+        message_type = data.get('message_type')
         conversation_data = data.get('conversation', {})
+        sender = data.get('sender', {})
         
-        print(f"Message data: {message_data}", flush=True)
-        print(f"Conversation data: {conversation_data}", flush=True)
-
-        # Get message type - can be 'incoming', 0, or 1
-        # Chatwoot uses: 0 = incoming, 1 = outgoing, 2 = activity
-        message_type = message_data.get('message_type')
+        # If not at root, try getting from conversation.messages[0]
+        if not content and conversation_data.get('messages'):
+            latest_message = conversation_data['messages'][0]
+            content = latest_message.get('content', '')
+            message_type = latest_message.get('message_type')
+            sender = latest_message.get('sender', sender)
+        
+        print(f"Content: {content}", flush=True)
         print(f"Message type: {message_type} (type: {type(message_type).__name__})", flush=True)
+        print(f"Sender: {sender}", flush=True)
 
+        # Chatwoot uses: 0 = incoming, 1 = outgoing, 2 = activity
         # Handle both string and integer message types
         is_incoming = message_type in ['incoming', 0, '0']
         print(f"Is incoming: {is_incoming}", flush=True)
@@ -760,17 +880,12 @@ def handle_chatwoot_message(restaurant, data):
             print(f"IGNORING: Not an incoming message (type: {message_type})", flush=True)
             return jsonify({'status': 'ignored', 'reason': f'Not an incoming message (type: {message_type})'})
 
-        # Get message content
-        content = message_data.get('content', '')
-        print(f"Content: {content}", flush=True)
-        
         if not content:
             print("IGNORING: Empty message content", flush=True)
             return jsonify({'status': 'ignored', 'reason': 'Empty message'})
 
         # Get conversation ID for session tracking
-        # Try multiple locations where conversation_id might be
-        conversation_id = conversation_data.get('id') or data.get('conversation_id') or message_data.get('conversation_id')
+        conversation_id = conversation_data.get('id')
         print(f"Conversation ID: {conversation_id}", flush=True)
 
         if not conversation_id:
@@ -778,9 +893,8 @@ def handle_chatwoot_message(restaurant, data):
             return jsonify({'status': 'error', 'reason': 'No conversation_id'}), 400
 
         # Get sender info
-        sender = message_data.get('sender', {}) or data.get('sender', {})
         sender_name = sender.get('name', 'Customer')
-        print(f"Sender: {sender_name}", flush=True)
+        print(f"Sender name: {sender_name}", flush=True)
 
         # Generate AI response
         print(f"=== GENERATING AI RESPONSE ===", flush=True)
