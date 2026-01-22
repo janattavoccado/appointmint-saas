@@ -2,7 +2,7 @@
 
 {% block title %}Chatwoot Integration - {{ restaurant.name }}{% endblock %}
 
-{% block content %}
+{% block admin_content %}
 <div class="content-header">
     <div class="header-left">
         <a href="{{ url_for('admin.restaurant_detail', id=restaurant.id) }}" class="btn btn-secondary">
@@ -51,7 +51,6 @@
             <p class="help-text">Configure these settings to allow AppointMint to send responses back to Chatwoot.</p>
             
             <form method="POST" action="{{ url_for('admin.save_chatwoot_settings', id=restaurant.id) }}">
-                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 
                 <div class="form-group">
                     <label for="chatwoot_base_url">Chatwoot Instance URL</label>
@@ -142,7 +141,6 @@
             <p class="help-text">If you believe your webhook URL has been compromised, you can regenerate the token.</p>
             <form method="POST" action="{{ url_for('admin.regenerate_webhook_token', id=restaurant.id) }}" 
                   onsubmit="return confirm('Are you sure? This will invalidate the current webhook URL and you will need to update it in Chatwoot.');">
-                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <button type="submit" class="btn btn-danger">🔄 Regenerate Webhook Token</button>
             </form>
         </div>
