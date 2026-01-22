@@ -726,26 +726,42 @@ def chatwoot_webhook(webhook_token):
 def handle_chatwoot_message(restaurant, data):
     """
     Handle incoming message from Chatwoot and send AI response.
+    Supports both regular webhook and Agent Bot payload formats.
     """
     try:
+        # Log the full payload for debugging
+        current_app.logger.info(f"Chatwoot payload: {json.dumps(data, default=str)[:500]}")
+        
         message_data = data.get('message', {})
         conversation_data = data.get('conversation', {})
         
-        # Only respond to incoming messages (from customers, not agents)
+        # Get message type - can be 'incoming', 0, or 1
+        # Chatwoot uses: 0 = incoming, 1 = outgoing, 2 = activity
         message_type = message_data.get('message_type')
-        if message_type != 'incoming':
-            return jsonify({'status': 'ignored', 'reason': 'Not an incoming message'})
+        
+        # Handle both string and integer message types
+        is_incoming = message_type in ['incoming', 0, '0']
+        
+        if not is_incoming:
+            current_app.logger.info(f"Ignoring non-incoming message type: {message_type}")
+            return jsonify({'status': 'ignored', 'reason': f'Not an incoming message (type: {message_type})'})
         
         # Get message content
         content = message_data.get('content', '')
         if not content:
+            current_app.logger.info("Empty message content received")
             return jsonify({'status': 'ignored', 'reason': 'Empty message'})
         
         # Get conversation ID for session tracking
-        conversation_id = conversation_data.get('id')
+        # Try multiple locations where conversation_id might be
+        conversation_id = conversation_data.get('id') or data.get('conversation_id') or message_data.get('conversation_id')
+        
+        if not conversation_id:
+            current_app.logger.error("No conversation_id found in payload")
+            return jsonify({'status': 'error', 'reason': 'No conversation_id'}), 400
         
         # Get sender info
-        sender = message_data.get('sender', {})
+        sender = message_data.get('sender', {}) or data.get('sender', {})
         sender_name = sender.get('name', 'Customer')
         
         current_app.logger.info(f"Processing message from {sender_name}: {content[:50]}...")
