@@ -326,6 +326,82 @@ def edit_user(id):
     return render_template('admin/user_form.html', user=user, tenants=tenants)
 
 
+@admin_bp.route('/users/<int:id>/delete', methods=['POST'])
+@login_required
+@tenant_superuser_required
+def delete_user(id):
+    """Delete user"""
+    user = User.query.get_or_404(id)
+    
+    # Check access
+    if not current_user.is_admin():
+        if user.tenant_id != current_user.tenant_id:
+            flash('Access denied.', 'error')
+            return redirect(url_for('admin.users'))
+        # Tenant superuser cannot delete admin users
+        if user.is_admin():
+            flash('Access denied. Cannot delete system administrator.', 'error')
+            return redirect(url_for('admin.users'))
+    
+    # Cannot delete yourself
+    if user.id == current_user.id:
+        flash('You cannot delete your own account.', 'error')
+        return redirect(url_for('admin.users'))
+    
+    db.session.delete(user)
+    db.session.commit()
+    flash(f'User {user.full_name} has been deleted.', 'success')
+    return redirect(url_for('admin.users'))
+
+
+# =============================================================================
+# PASSWORD MANAGEMENT
+# =============================================================================
+
+@admin_bp.route('/users/<int:id>/change-password', methods=['GET', 'POST'])
+@login_required
+@tenant_superuser_required
+def change_user_password(id):
+    """Change user password - dedicated route for password changes"""
+    user = User.query.get_or_404(id)
+    
+    # Check access
+    if not current_user.is_admin():
+        if user.tenant_id != current_user.tenant_id:
+            flash('Access denied.', 'error')
+            return redirect(url_for('admin.users'))
+        # Tenant superuser cannot change admin passwords
+        if user.is_admin():
+            flash('Access denied. Cannot change system administrator password.', 'error')
+            return redirect(url_for('admin.users'))
+    
+    if request.method == 'POST':
+        new_password = request.form.get('new_password')
+        confirm_password = request.form.get('confirm_password')
+        
+        # Validate passwords
+        if not new_password:
+            flash('Please enter a new password.', 'error')
+            return render_template('admin/change_password.html', user=user)
+        
+        if len(new_password) < 8:
+            flash('Password must be at least 8 characters long.', 'error')
+            return render_template('admin/change_password.html', user=user)
+        
+        if new_password != confirm_password:
+            flash('Passwords do not match.', 'error')
+            return render_template('admin/change_password.html', user=user)
+        
+        # Update password
+        user.set_password(new_password)
+        db.session.commit()
+        
+        flash(f'Password for {user.full_name} ({user.email}) has been changed successfully!', 'success')
+        return redirect(url_for('admin.users'))
+    
+    return render_template('admin/change_password.html', user=user)
+
+
 # =============================================================================
 # RESTAURANT MANAGEMENT
 # =============================================================================
