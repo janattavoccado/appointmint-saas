@@ -828,13 +828,7 @@ def handle_agent_bot_message(restaurant, payload):
             try:
                 print("Trying OpenAI Agents SDK...", flush=True)
                 from app.services.ai_assistant import get_assistant
-                # Pass customer info from incoming message for reservation flow
-                assistant = get_assistant(
-                    restaurant.id, 
-                    current_app._get_current_object(),
-                    customer_name=sender_name,
-                    customer_phone=phone_number
-                )
+                assistant = get_assistant(restaurant.id, current_app._get_current_object())
                 ai_response = assistant.chat_sync(
                     content, 
                     str(conversation_id), 
@@ -1010,13 +1004,7 @@ def handle_chatwoot_message(restaurant, data):
             try:
                 print("Trying OpenAI Agents SDK...", flush=True)
                 from app.services.ai_assistant import get_assistant
-                # Pass customer info from incoming message for reservation flow
-                assistant = get_assistant(
-                    restaurant.id, 
-                    current_app._get_current_object(),
-                    customer_name=sender_name,
-                    customer_phone=sender_phone
-                )
+                assistant = get_assistant(restaurant.id, current_app._get_current_object())
                 ai_response = assistant.chat_sync(
                     content, 
                     str(conversation_id), 

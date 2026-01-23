@@ -1,396 +1,182 @@
 """
-AI Reservation Assistant Service with OpenAI-Based Entity Extraction
-Uses Pydantic models for structured data and OpenAI for intelligent understanding.
-
-KEY FEATURES:
-1. State persistence using database to remember booking details across messages
-2. Context-aware parsing for direct answers (e.g., "6" when asked for guest count)
-3. OpenAI extraction for complex natural language understanding
-
-Reservation Flow:
-1. Extract all available info from user message using OpenAI
-2. Store state in database after each response
-3. Retrieve state on next message to continue conversation
-4. Ask only for missing required fields
-5. Confirm name/phone from incoming message
-6. Collect special requests
-7. Final confirmation and database storage
+AI Assistant for Restaurant Reservations
+Based on conversation-history approach that maintains full context.
+Integrates with Chatwoot/WhatsApp and persists conversation history in database.
 """
 
-import os
-import re
-import json
-from datetime import datetime, timedelta
-from typing import Optional, Dict, Any, List, Tuple
-from enum import Enum
-from pydantic import BaseModel, Field, field_validator
+from flask import Flask
 from openai import OpenAI
+from pydantic import BaseModel, Field, ValidationError
+from datetime import datetime, timedelta
+from typing import Optional, List, Dict, Any
+import pytz
+import os
+import json
 
-from app.models import db, Restaurant, Table, Reservation, AIConversation, Tenant
-
-# Import memory service
-try:
-    from app.services.memory_service import get_memory_service, format_memories_for_context
-    MEMORY_AVAILABLE = True
-except ImportError:
-    MEMORY_AVAILABLE = False
-    print("WARNING: Memory service not available", flush=True)
+# Import database models
+from app.models import Restaurant, Reservation, AIConversation, db
 
 
 # =============================================================================
-# PYDANTIC MODELS FOR STRUCTURED DATA
+# PYDANTIC MODELS
 # =============================================================================
 
-class BookingState(str, Enum):
-    """Enum for booking conversation states"""
-    INITIAL = 'initial'
-    COLLECTING_INFO = 'collecting_info'
-    AWAITING_DATE = 'awaiting_date'
-    AWAITING_TIME = 'awaiting_time'
-    AWAITING_GUESTS = 'awaiting_guests'
-    AWAITING_NAME_CONFIRMATION = 'awaiting_name_confirmation'
-    AWAITING_NAME_INPUT = 'awaiting_name_input'
-    AWAITING_PHONE_INPUT = 'awaiting_phone_input'
-    AWAITING_SPECIAL_REQUESTS = 'awaiting_special_requests'
-    AWAITING_FINAL_CONFIRMATION = 'awaiting_final_confirmation'
-    HANDOVER_TO_HUMAN = 'handover_to_human'
-    COMPLETED = 'completed'
+class TableReservation(BaseModel):
+    """Validated table reservation data"""
+    date: str = Field(..., description="Reservation date in YYYY-MM-DD format")
+    time: str = Field(..., description="Reservation time in HH:MM format (24-hour)")
+    guests: int = Field(..., description="Number of guests (1-8)")
+    name: str = Field(..., description="Customer name")
+    phone: str = Field(..., description="Customer phone number")
+    special_requests: Optional[str] = Field(None, description="Any special requests")
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "date": "2026-01-25",
+                "time": "19:00",
+                "guests": 4,
+                "name": "John Doe",
+                "phone": "+46 73 123 4567",
+                "special_requests": "Window seat preferred"
+            }
+        }
 
 
-class ExtractedReservationInfo(BaseModel):
-    """Pydantic model for reservation info extracted from user message by OpenAI"""
-    has_reservation_intent: bool = Field(False, description="Whether user wants to make a reservation")
-    date: Optional[str] = Field(None, description="Extracted date in YYYY-MM-DD format")
-    date_display: Optional[str] = Field(None, description="Human-readable date")
-    time: Optional[str] = Field(None, description="Extracted time in HH:MM format (24h)")
-    time_display: Optional[str] = Field(None, description="Human-readable time (12h)")
-    guests: Optional[int] = Field(None, description="Number of guests")
-    name: Optional[str] = Field(None, description="Customer name if mentioned")
-    is_question: bool = Field(False, description="Whether this is a question about the restaurant")
-    question_topic: Optional[str] = Field(None, description="Topic of the question if any")
-
-
-class BookingDetails(BaseModel):
-    """Pydantic model for complete booking details"""
-    date: Optional[str] = Field(None, description="Reservation date in YYYY-MM-DD format")
-    date_display: Optional[str] = Field(None, description="Human-readable date display")
-    time: Optional[str] = Field(None, description="Reservation time in HH:MM format (24h)")
-    time_display: Optional[str] = Field(None, description="Human-readable time display (12-hour)")
-    guests: Optional[int] = Field(None, description="Number of guests", ge=1, le=50)
-    customer_name: Optional[str] = Field(None, description="Customer name")
-    customer_phone: Optional[str] = Field(None, description="Customer phone number")
-    customer_email: Optional[str] = Field(None, description="Customer email (optional)")
-    special_requests: Optional[str] = Field(None, description="Special requests or notes")
-    requires_human_handover: bool = Field(False, description="Whether this booking requires human staff")
-    handover_reason: Optional[str] = Field(None, description="Reason for human handover")
-    
-    def get_missing_fields(self) -> List[str]:
-        """Return list of missing required fields"""
-        missing = []
-        if not self.date:
-            missing.append('date')
-        if not self.time:
-            missing.append('time')
-        if not self.guests:
-            missing.append('guests')
-        return missing
-    
-    def is_complete(self) -> bool:
-        """Check if all required fields are filled"""
-        return bool(self.date and self.time and self.guests)
-
-
-class ConversationState(BaseModel):
-    """Pydantic model for conversation state - persisted between requests"""
-    state: BookingState = Field(default=BookingState.INITIAL, description="Current booking state")
-    booking_details: BookingDetails = Field(default_factory=BookingDetails, description="Collected booking details")
-    restaurant_id: int = Field(..., description="Restaurant ID")
-    timezone: str = Field(default='UTC', description="Restaurant timezone")
-    incoming_customer_name: Optional[str] = Field(None, description="Name from incoming message")
-    incoming_customer_phone: Optional[str] = Field(None, description="Phone from incoming message")
-    last_question: Optional[str] = Field(None, description="What we last asked the user (date/time/guests)")
-
-
-class ButtonOption(BaseModel):
-    """Pydantic model for a button option"""
-    value: str = Field(..., description="Value sent when button is clicked")
-    display: str = Field(..., description="Display text for the button")
+class ConversationMessage(BaseModel):
+    """A single message in the conversation"""
+    role: str = Field(..., description="Message role: 'user' or 'assistant'")
+    content: str = Field(..., description="Message content")
 
 
 class AssistantResponse(BaseModel):
-    """Pydantic model for assistant response"""
-    text: str = Field(..., description="Response text message")
-    buttons: Optional[List[ButtonOption]] = Field(None, description="Optional buttons to display")
-    button_type: Optional[str] = Field(None, description="Type of buttons")
-    conversation_state: ConversationState = Field(..., description="Current conversation state to persist")
+    """Response from the AI assistant"""
+    text: str = Field(..., description="Response text to send to user")
+    reservation: Optional[Dict[str, Any]] = Field(None, description="Completed reservation data if any")
+    conversation_cleared: bool = Field(False, description="Whether conversation was cleared")
 
 
 # =============================================================================
-# STATE PERSISTENCE FUNCTIONS
+# CONVERSATION HISTORY MANAGEMENT (Database-backed)
 # =============================================================================
 
-def save_conversation_state(restaurant_id: int, conversation_id: str, state: ConversationState, app=None):
-    """Save conversation state to database for persistence across messages."""
-    try:
-        if app:
-            with app.app_context():
-                _do_save_state(restaurant_id, conversation_id, state)
-        else:
-            _do_save_state(restaurant_id, conversation_id, state)
-    except Exception as e:
-        print(f"Error saving conversation state: {e}", flush=True)
-
-
-def _do_save_state(restaurant_id: int, conversation_id: str, state: ConversationState):
-    """Internal function to save state within app context."""
-    # Look for existing state record
-    existing = AIConversation.query.filter_by(
-        restaurant_id=restaurant_id,
-        conversation_type=f'state_{conversation_id}'
-    ).first()
+def get_conversation_history(restaurant_id: int, conversation_id: str, app: Flask) -> List[Dict[str, str]]:
+    """
+    Get conversation history from database.
     
-    state_json = state.model_dump_json()
+    Args:
+        restaurant_id: Restaurant ID
+        conversation_id: Chatwoot conversation ID
+        app: Flask app for database context
     
-    if existing:
-        existing.transcript = state_json
-        existing.updated_at = datetime.utcnow()
-    else:
-        new_record = AIConversation(
-            restaurant_id=restaurant_id,
-            conversation_type=f'state_{conversation_id}',
-            transcript=state_json,
-            tokens_used=0
-        )
-        db.session.add(new_record)
-    
-    db.session.commit()
-    print(f"Saved state for conversation {conversation_id}: {state.state}, last_question={state.last_question}", flush=True)
-
-
-def load_conversation_state(restaurant_id: int, conversation_id: str, app=None) -> Optional[ConversationState]:
-    """Load conversation state from database."""
-    try:
-        if app:
-            with app.app_context():
-                return _do_load_state(restaurant_id, conversation_id)
-        else:
-            return _do_load_state(restaurant_id, conversation_id)
-    except Exception as e:
-        print(f"Error loading conversation state: {e}", flush=True)
-        return None
-
-
-def _do_load_state(restaurant_id: int, conversation_id: str) -> Optional[ConversationState]:
-    """Internal function to load state within app context."""
-    record = AIConversation.query.filter_by(
-        restaurant_id=restaurant_id,
-        conversation_type=f'state_{conversation_id}'
-    ).first()
-    
-    if record and record.transcript:
+    Returns:
+        List of message dicts with 'role' and 'content'
+    """
+    with app.app_context():
         try:
-            state = ConversationState.model_validate_json(record.transcript)
-            print(f"Loaded state for conversation {conversation_id}: {state.state}, last_question={state.last_question}", flush=True)
-            print(f"Booking details: date={state.booking_details.date}, time={state.booking_details.time}, guests={state.booking_details.guests}", flush=True)
-            return state
+            # Look for existing conversation history
+            record = AIConversation.query.filter_by(
+                restaurant_id=restaurant_id,
+                conversation_type=f"history_{conversation_id}"
+            ).first()
+            
+            if record and record.transcript:
+                try:
+                    history = json.loads(record.transcript)
+                    if isinstance(history, list):
+                        return history
+                except json.JSONDecodeError:
+                    pass
+            
+            return []
         except Exception as e:
-            print(f"Error parsing saved state: {e}", flush=True)
-    
-    return None
+            print(f"Error loading conversation history: {e}", flush=True)
+            return []
 
 
-def clear_conversation_state(restaurant_id: int, conversation_id: str, app=None):
-    """Clear conversation state from database (e.g., after completion or cancellation)."""
-    try:
-        if app:
-            with app.app_context():
-                _do_clear_state(restaurant_id, conversation_id)
-        else:
-            _do_clear_state(restaurant_id, conversation_id)
-    except Exception as e:
-        print(f"Error clearing conversation state: {e}", flush=True)
-
-
-def _do_clear_state(restaurant_id: int, conversation_id: str):
-    """Internal function to clear state within app context."""
-    AIConversation.query.filter_by(
-        restaurant_id=restaurant_id,
-        conversation_type=f'state_{conversation_id}'
-    ).delete()
-    db.session.commit()
-    print(f"Cleared state for conversation {conversation_id}", flush=True)
-
-
-# =============================================================================
-# CONTEXT-AWARE PARSING FUNCTIONS
-# =============================================================================
-
-def is_phone_number_like(text: str) -> bool:
+def save_conversation_history(restaurant_id: int, conversation_id: str, history: List[Dict[str, str]], app: Flask):
     """
-    Check if a text string looks like a phone number rather than a name.
-    Returns True if the text appears to be a phone number.
+    Save conversation history to database.
+    
+    Args:
+        restaurant_id: Restaurant ID
+        conversation_id: Chatwoot conversation ID
+        history: List of message dicts
+        app: Flask app for database context
     """
-    if not text:
-        return True
-    
-    # Remove common phone formatting characters
-    cleaned = text.replace(' ', '').replace('-', '').replace('(', '').replace(')', '').replace('+', '')
-    
-    # If mostly digits, it's a phone number
-    digit_count = sum(1 for c in cleaned if c.isdigit())
-    if len(cleaned) > 0 and digit_count / len(cleaned) > 0.6:
-        return True
-    
-    # Check for phone patterns like "+46 73 540 80 23" or "46735408023"
-    if text.startswith('+') or (len(cleaned) >= 7 and cleaned.isdigit()):
-        return True
-    
-    return False
-
-
-def parse_number_from_text(text: str) -> Optional[int]:
-    """
-    Extract a number from text, handling both digits and word forms.
-    Returns None if no valid number found.
-    """
-    text = text.lower().strip()
-    
-    # Word to number mapping
-    word_numbers = {
-        'one': 1, 'two': 2, 'three': 3, 'four': 4, 'five': 5,
-        'six': 6, 'seven': 7, 'eight': 8, 'nine': 9, 'ten': 10,
-        'eleven': 11, 'twelve': 12, 'thirteen': 13, 'fourteen': 14, 'fifteen': 15,
-        'sixteen': 16, 'seventeen': 17, 'eighteen': 18, 'nineteen': 19, 'twenty': 20,
-        # Common variations
-        'uno': 1, 'dos': 2, 'tres': 3, 'cuatro': 4, 'cinco': 5,
-        'seis': 6, 'siete': 7, 'ocho': 8, 'nueve': 9, 'diez': 10,
-        # Handle transcription errors
-        'sex': 6, 'sick': 6, 'sicks': 6,  # "six" misheard
-        'to': 2, 'too': 2, 'for': 4,  # common mishearings
-    }
-    
-    # Check for word numbers
-    for word, num in word_numbers.items():
-        if word in text.split():
-            return num
-    
-    # Check for digits
-    digits = re.findall(r'\d+', text)
-    if digits:
-        num = int(digits[0])
-        if 1 <= num <= 50:  # Reasonable guest count
-            return num
-    
-    return None
-
-
-def parse_date_from_text(text: str) -> Tuple[Optional[str], Optional[str]]:
-    """
-    Parse date from text, handling various formats.
-    Returns (date_str in YYYY-MM-DD, display_str) or (None, None).
-    """
-    text = text.lower().strip()
-    today = datetime.now()
-    
-    # Handle relative dates
-    if 'today' in text:
-        return today.strftime('%Y-%m-%d'), f"Today ({today.strftime('%A')})"
-    
-    if 'tomorrow' in text:
-        tomorrow = today + timedelta(days=1)
-        return tomorrow.strftime('%Y-%m-%d'), f"Tomorrow ({tomorrow.strftime('%A')})"
-    
-    # Handle weekday names
-    weekdays = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']
-    for i, day in enumerate(weekdays):
-        if day in text:
-            # Find next occurrence of this weekday
-            days_ahead = i - today.weekday()
-            if days_ahead <= 0:  # Target day already happened this week
-                days_ahead += 7
-            target_date = today + timedelta(days=days_ahead)
-            return target_date.strftime('%Y-%m-%d'), target_date.strftime('%A, %B %d')
-    
-    # Handle YYYY-MM-DD format
-    match = re.search(r'(\d{4})-(\d{2})-(\d{2})', text)
-    if match:
+    with app.app_context():
         try:
-            date = datetime.strptime(match.group(0), '%Y-%m-%d')
-            return match.group(0), date.strftime('%A, %B %d')
-        except ValueError:
-            pass
-    
-    return None, None
-
-
-def parse_time_from_text(text: str) -> Tuple[Optional[str], Optional[str]]:
-    """
-    Parse time from text, handling various formats.
-    Returns (time_str in HH:MM, display_str) or (None, None).
-    """
-    text = text.lower().strip()
-    
-    # Handle common time words
-    time_words = {
-        'noon': ('12:00', '12:00 PM'),
-        'midnight': ('00:00', '12:00 AM'),
-        'lunch': ('12:00', '12:00 PM'),
-        'dinner': ('19:00', '7:00 PM'),
-        'evening': ('19:00', '7:00 PM'),
-    }
-    
-    for word, (time_24, time_12) in time_words.items():
-        if word in text:
-            return time_24, time_12
-    
-    # Handle HH:MM format (24h)
-    match = re.search(r'(\d{1,2}):(\d{2})', text)
-    if match:
-        hour = int(match.group(1))
-        minute = int(match.group(2))
-        if 0 <= hour <= 23 and 0 <= minute <= 59:
-            time_24 = f"{hour:02d}:{minute:02d}"
-            if hour == 0:
-                time_12 = f"12:{minute:02d} AM"
-            elif hour < 12:
-                time_12 = f"{hour}:{minute:02d} AM"
-            elif hour == 12:
-                time_12 = f"12:{minute:02d} PM"
+            record = AIConversation.query.filter_by(
+                restaurant_id=restaurant_id,
+                conversation_type=f"history_{conversation_id}"
+            ).first()
+            
+            if record:
+                record.transcript = json.dumps(history)
+                record.updated_at = datetime.utcnow()
             else:
-                time_12 = f"{hour-12}:{minute:02d} PM"
-            return time_24, time_12
+                record = AIConversation(
+                    restaurant_id=restaurant_id,
+                    conversation_type=f"history_{conversation_id}",
+                    transcript=json.dumps(history),
+                    created_at=datetime.utcnow(),
+                    updated_at=datetime.utcnow()
+                )
+                db.session.add(record)
+            
+            db.session.commit()
+            print(f"Saved conversation history for {conversation_id}: {len(history)} messages", flush=True)
+        except Exception as e:
+            print(f"Error saving conversation history: {e}", flush=True)
+            db.session.rollback()
+
+
+def clear_conversation_history(restaurant_id: int, conversation_id: str, app: Flask):
+    """Clear conversation history from database."""
+    with app.app_context():
+        try:
+            AIConversation.query.filter_by(
+                restaurant_id=restaurant_id,
+                conversation_type=f"history_{conversation_id}"
+            ).delete()
+            db.session.commit()
+            print(f"Cleared conversation history for {conversation_id}", flush=True)
+        except Exception as e:
+            print(f"Error clearing conversation history: {e}", flush=True)
+            db.session.rollback()
+
+
+def add_to_conversation_history(
+    restaurant_id: int, 
+    conversation_id: str, 
+    role: str, 
+    content: str, 
+    app: Flask,
+    max_messages: int = 20
+):
+    """
+    Add a message to conversation history.
     
-    # Handle "X pm" or "X am" format
-    match = re.search(r'(\d{1,2})\s*(am|pm|a\.m\.|p\.m\.)', text)
-    if match:
-        hour = int(match.group(1))
-        is_pm = 'p' in match.group(2).lower()
-        
-        if is_pm and hour != 12:
-            hour += 12
-        elif not is_pm and hour == 12:
-            hour = 0
-        
-        time_24 = f"{hour:02d}:00"
-        if hour == 0:
-            time_12 = "12:00 AM"
-        elif hour < 12:
-            time_12 = f"{hour}:00 AM"
-        elif hour == 12:
-            time_12 = "12:00 PM"
-        else:
-            time_12 = f"{hour-12}:00 PM"
-        return time_24, time_12
+    Args:
+        restaurant_id: Restaurant ID
+        conversation_id: Chatwoot conversation ID
+        role: 'user' or 'assistant'
+        content: Message content
+        app: Flask app for database context
+        max_messages: Maximum messages to keep (default 20)
+    """
+    history = get_conversation_history(restaurant_id, conversation_id, app)
     
-    # Handle just a number (assume PM for typical dinner hours 5-10)
-    match = re.search(r'^(\d{1,2})$', text)
-    if match:
-        hour = int(match.group(1))
-        if 1 <= hour <= 10:  # Assume PM for dinner hours
-            hour_24 = hour + 12 if hour != 12 else 12
-            return f"{hour_24:02d}:00", f"{hour}:00 PM"
+    history.append({
+        "role": role,
+        "content": content
+    })
     
-    return None, None
+    # Keep only last N messages to avoid token limits
+    if len(history) > max_messages:
+        history = history[-max_messages:]
+    
+    save_conversation_history(restaurant_id, conversation_id, history, app)
 
 
 # =============================================================================
@@ -398,1019 +184,395 @@ def parse_time_from_text(text: str) -> Tuple[Optional[str], Optional[str]]:
 # =============================================================================
 
 class ReservationAssistant:
-    """AI-powered reservation assistant with OpenAI-based entity extraction and state persistence"""
+    """
+    AI Assistant for handling restaurant reservations.
+    Maintains full conversation history for context.
+    """
     
-    MAX_GUESTS_WITHOUT_HANDOVER = 8
-    
-    def __init__(self, restaurant_id: int, app=None, customer_info: Optional[Dict] = None):
+    def __init__(self, restaurant_id: int, app: Flask):
+        """
+        Initialize the assistant.
+        
+        Args:
+            restaurant_id: Restaurant ID
+            app: Flask app for database context
+        """
         self.restaurant_id = restaurant_id
         self.app = app
-        self._restaurant_info = None
-        self._timezone = 'UTC'
-        self._client = OpenAI()
-        self._customer_info = customer_info or {}
+        self.openai_client = OpenAI(api_key=os.environ.get('OPENAI_API_KEY'))
         
-        # Initialize memory service
-        self._memory_service = None
-        if MEMORY_AVAILABLE:
-            try:
-                self._memory_service = get_memory_service()
-                print(f"Memory service initialized: {self._memory_service.is_available}", flush=True)
-            except Exception as e:
-                print(f"Failed to initialize memory service: {e}", flush=True)
-    
-    def _get_restaurant_info(self) -> Dict[str, Any]:
-        """Get restaurant information from database"""
-        if self._restaurant_info:
-            return self._restaurant_info
-        
-        with self.app.app_context():
-            restaurant = Restaurant.query.get(self.restaurant_id)
-            if not restaurant:
-                return {}
-            
-            self._timezone = restaurant.timezone or 'UTC'
-                
-            self._restaurant_info = {
-                'id': restaurant.id,
-                'name': restaurant.name,
-                'address': restaurant.address,
-                'city': restaurant.city,
-                'phone': restaurant.phone,
-                'timezone': self._timezone,
-                'cuisine_type': getattr(restaurant, 'cuisine_type', None) or 'Various',
-                'description': getattr(restaurant, 'description', None) or '',
-                'knowledge_base': getattr(restaurant, 'knowledge_base', None) or '',
-                'tables': [
-                    {
-                        'id': t.id,
-                        'name': t.name,
-                        'capacity': t.capacity,
-                        'location': t.location
-                    }
-                    for t in restaurant.tables if t.is_active
-                ]
-            }
-        return self._restaurant_info
-    
-    def _extract_reservation_info(self, message: str, context: Optional[str] = None) -> ExtractedReservationInfo:
-        """
-        Use OpenAI to extract reservation information from user message.
-        Context helps OpenAI understand what the user is responding to.
-        """
-        today = datetime.now()
-        today_str = today.strftime('%Y-%m-%d')
-        tomorrow_str = (today + timedelta(days=1)).strftime('%Y-%m-%d')
-        
-        context_hint = ""
-        if context:
-            context_hint = f"\nIMPORTANT CONTEXT: The user was just asked: \"{context}\". Their response should be interpreted in this context."
-        
-        system_prompt = f"""You are an AI that extracts reservation information from user messages.
-Today's date is {today_str} ({today.strftime('%A')}).
-Tomorrow is {tomorrow_str}.
-{context_hint}
-
-Extract the following information if present in the user's message:
-1. has_reservation_intent: true if user wants to make a reservation, book a table, dine, etc.
-2. date: Convert any date mention to YYYY-MM-DD format
-   - "today" = {today_str}
-   - "tomorrow" = {tomorrow_str}
-   - "Friday" = next Friday's date
-   - "January 25" = 2026-01-25 (use current/next year)
-3. date_display: Human readable date like "Friday, January 24"
-4. time: Convert any time to HH:MM 24-hour format
-   - "6pm" = "18:00"
-   - "7:30" = "19:30" (assume PM for evening times)
-   - "noon" = "12:00"
-   - "evening" = "19:00"
-5. time_display: Human readable time like "6:00 PM"
-6. guests: Number of people (look for "for 4", "party of 2", "2 people", "we will be 7", etc.)
-   - If user says just a number like "6" or "six", extract it as guests
-   - "Six" = 6 guests
-   - Handle transcription errors: "sex" or "sick" likely means "six" = 6
-7. name: Customer name if explicitly mentioned
-8. is_question: true if user is asking a question about the restaurant (hours, menu, location, etc.)
-9. question_topic: What the question is about if is_question is true
-
-IMPORTANT: 
-- "dine" means reservation intent
-- "die" is likely a transcription error for "dine"
-- Be generous in detecting reservation intent
-- Extract ALL available information from the message
-- If user gives just a number, it's likely answering a previous question about guests
-
-Return a JSON object with these fields. Use null for missing fields."""
-
+        # Initialize mem0 if available
+        self._mem0_client = None
         try:
-            response = self._client.chat.completions.create(
-                model="gpt-4.1-nano",
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": f"Extract reservation info from: \"{message}\""}
-                ],
-                response_format={"type": "json_object"},
-                max_tokens=500,
-                temperature=0.1
-            )
-            
-            result = json.loads(response.choices[0].message.content)
-            print(f"OpenAI extraction result: {result}", flush=True)
-            
-            return ExtractedReservationInfo(
-                has_reservation_intent=result.get('has_reservation_intent', False),
-                date=result.get('date'),
-                date_display=result.get('date_display'),
-                time=result.get('time'),
-                time_display=result.get('time_display'),
-                guests=result.get('guests'),
-                name=result.get('name'),
-                is_question=result.get('is_question', False),
-                question_topic=result.get('question_topic')
-            )
-            
+            mem0_key = os.environ.get('MEM0_API_KEY')
+            if mem0_key:
+                from mem0 import MemoryClient
+                self._mem0_client = MemoryClient(api_key=mem0_key)
+                print("Mem0 client initialized", flush=True)
         except Exception as e:
-            print(f"OpenAI extraction error: {e}", flush=True)
-            # Fallback to basic keyword detection
-            message_lower = message.lower()
-            has_intent = any(kw in message_lower for kw in ['reserv', 'book', 'table', 'dine', 'die', 'dinner', 'lunch'])
-            is_question = '?' in message or any(kw in message_lower for kw in ['what', 'when', 'where', 'how', 'menu', 'hour'])
-            
-            return ExtractedReservationInfo(
-                has_reservation_intent=has_intent,
-                is_question=is_question
-            )
+            print(f"Mem0 not available: {e}", flush=True)
+        
+        # Load restaurant info
+        self._restaurant = None
+        self._knowledgebase = None
+        self._timezone = pytz.timezone('Europe/Stockholm')  # Default timezone
+        
+        self._load_restaurant_info()
     
-    def _get_next_7_dates(self) -> List[ButtonOption]:
-        """Get the next 7 available dates starting from today"""
-        today = datetime.now()
-        dates = []
-        for i in range(7):
-            date = today + timedelta(days=i)
-            day_name = date.strftime('%A')
-            if i == 0:
-                display = f"Today ({day_name})"
-            elif i == 1:
-                display = f"Tomorrow ({day_name})"
-            else:
-                display = date.strftime('%A, %b %d')
-            dates.append(ButtonOption(value=date.strftime('%Y-%m-%d'), display=display))
-        return dates
-    
-    def _get_time_buttons(self) -> List[ButtonOption]:
-        """Get common time slot buttons"""
-        times = [
-            ('12:00', '12:00 PM (Noon)'),
-            ('18:00', '6:00 PM'),
-            ('19:00', '7:00 PM'),
-            ('20:00', '8:00 PM'),
-        ]
-        return [ButtonOption(value=v, display=d) for v, d in times]
-    
-    def _get_guest_buttons(self) -> List[ButtonOption]:
-        """Get guest count buttons"""
-        buttons = []
-        for i in range(1, 9):
-            buttons.append(ButtonOption(value=str(i), display=f"{i} guest{'s' if i > 1 else ''}"))
-        buttons.append(ButtonOption(value='9+', display='9+ guests'))
-        return buttons
-    
-    def _get_yes_no_buttons(self) -> List[ButtonOption]:
-        """Get yes/no confirmation buttons"""
-        return [
-            ButtonOption(value='yes', display='Yes, correct'),
-            ButtonOption(value='no', display='No, update')
-        ]
-    
-    def _get_confirm_buttons(self) -> List[ButtonOption]:
-        """Get final confirmation buttons"""
-        return [
-            ButtonOption(value='confirm', display='Confirm Reservation'),
-            ButtonOption(value='cancel', display='Cancel')
-        ]
-    
-    def _get_special_request_buttons(self) -> List[ButtonOption]:
-        """Get special request options"""
-        return [
-            ButtonOption(value='none', display='No special requests'),
-            ButtonOption(value='window', display='Window seat'),
-            ButtonOption(value='quiet', display='Quiet area'),
-            ButtonOption(value='birthday', display='Birthday'),
-            ButtonOption(value='anniversary', display='Anniversary'),
-            ButtonOption(value='other', display='Other (type below)')
-        ]
-    
-    def _check_availability(self, date_str: str, time_str: str, party_size: int) -> Dict[str, Any]:
-        """Check table availability"""
+    def _load_restaurant_info(self):
+        """Load restaurant information from database."""
         with self.app.app_context():
             try:
-                reservation_date = datetime.strptime(date_str, '%Y-%m-%d').date()
-                reservation_time = datetime.strptime(time_str, '%H:%M').time()
-                
-                tables = Table.query.filter_by(
-                    restaurant_id=self.restaurant_id,
-                    is_active=True
-                ).filter(Table.capacity >= party_size).all()
-                
-                if not tables:
-                    return {'available': False, 'reason': f"No tables for {party_size} guests"}
-                
-                available_tables = []
-                for table in tables:
-                    existing = Reservation.query.filter_by(
-                        table_id=table.id,
-                        reservation_date=reservation_date,
-                        reservation_time=reservation_time
-                    ).filter(Reservation.status.in_(['pending', 'confirmed'])).first()
-                    
-                    if not existing:
-                        available_tables.append({
-                            'id': table.id,
-                            'name': table.name,
-                            'capacity': table.capacity,
-                            'location': table.location
-                        })
-                
-                if available_tables:
-                    return {'available': True, 'tables': available_tables}
-                else:
-                    return {'available': False, 'reason': 'All tables booked'}
+                self._restaurant = Restaurant.query.get(self.restaurant_id)
+                if self._restaurant:
+                    self._knowledgebase = self._restaurant.knowledge_base or ""
+                    # Use restaurant timezone if available
+                    if hasattr(self._restaurant, 'timezone') and self._restaurant.timezone:
+                        try:
+                            self._timezone = pytz.timezone(self._restaurant.timezone)
+                        except:
+                            pass
+                    print(f"Loaded restaurant: {self._restaurant.name}", flush=True)
             except Exception as e:
-                return {'available': False, 'reason': str(e)}
+                print(f"Error loading restaurant: {e}", flush=True)
     
-    def _make_reservation(self, booking: BookingDetails) -> Dict[str, Any]:
-        """Create the reservation in the database"""
+    def _get_current_datetime_info(self) -> Dict[str, str]:
+        """Get current date and time information."""
+        now = datetime.now(self._timezone)
+        tomorrow = now + timedelta(days=1)
+        
+        return {
+            "current_datetime": now.strftime("%Y-%m-%d %H:%M:%S"),
+            "current_date": now.strftime("%Y-%m-%d"),
+            "current_time": now.strftime("%H:%M"),
+            "day_of_week": now.strftime("%A"),
+            "tomorrow_date": tomorrow.strftime("%Y-%m-%d"),
+            "timezone": str(self._timezone)
+        }
+    
+    def _create_system_prompt(self, customer_name: Optional[str] = None, customer_phone: Optional[str] = None) -> str:
+        """Create the system prompt with current context."""
+        datetime_info = self._get_current_datetime_info()
+        restaurant_name = self._restaurant.name if self._restaurant else "Our Restaurant"
+        restaurant_phone = getattr(self._restaurant, 'phone', 'our staff') if self._restaurant else 'our staff'
+        
+        # Customer context
+        customer_context = ""
+        if customer_name and customer_name != customer_phone:
+            customer_context = f"\nKNOWN CUSTOMER INFORMATION:\n- Name: {customer_name}\n"
+        if customer_phone:
+            customer_context += f"- Phone: {customer_phone}\n"
+        
+        return f"""You are a friendly and professional table reservation assistant for {restaurant_name}.
+
+CURRENT DATE AND TIME INFORMATION:
+- Current Date: {datetime_info['current_date']}
+- Current Time: {datetime_info['current_time']}
+- Day of Week: {datetime_info['day_of_week']}
+- Tomorrow: {datetime_info['tomorrow_date']}
+- Timezone: {datetime_info['timezone']}
+
+IMPORTANT DATE UNDERSTANDING:
+- "Today" means: {datetime_info['current_date']}
+- "Tonight" means: {datetime_info['current_date']} (evening time)
+- "Tomorrow" means: {datetime_info['tomorrow_date']}
+- For weekday names (Monday, Tuesday, etc.), calculate the nearest FUTURE date for that weekday
+- Support date formats: YYYY-MM-DD, DD/MM/YYYY, "January 25", "25th", etc.
+{customer_context}
+RESTAURANT INFORMATION:
+{self._knowledgebase or "No specific restaurant information available."}
+
+YOUR RESPONSIBILITIES:
+1. Answer questions about the restaurant using the information above
+2. Help customers make table reservations by collecting:
+   - Date (understand "today", "tomorrow", "tonight", weekdays, various formats)
+   - Time (accept 12-hour with AM/PM and 24-hour format, convert to 24-hour HH:MM)
+   - Number of guests (if more than 8, inform them to contact staff directly at {restaurant_phone})
+   - Customer name (use the known name if available, or ask)
+   - Phone number (use the known phone if available, or ask)
+   - Any special requests (optional)
+
+CRITICAL: MAINTAIN CONVERSATION CONTEXT
+- You are having a CONTINUOUS conversation with the customer
+- REMEMBER all information they have already provided in this conversation
+- DO NOT ask for information they have already given you
+- Keep track of what you have collected: date, time, guests, name, phone, special requests
+- Only ask for information you don't have yet
+- When the customer provides additional details, ADD them to what you already know
+- If the customer's name and phone are already known (shown above), use them and just confirm
+
+3. When you have collected ALL required information (date, time, guests, name, phone), respond with a JSON object in this EXACT format:
+{{
+  "reservation_complete": true,
+  "data": {{
+    "date": "YYYY-MM-DD",
+    "time": "HH:MM",
+    "guests": number,
+    "name": "customer name",
+    "phone": "phone number",
+    "special_requests": "requests or null"
+  }}
+}}
+
+4. Before completing the reservation, ALWAYS confirm all details with the customer in a summary.
+
+5. Be conversational, friendly, and helpful. Guide the conversation naturally.
+
+RESPONSE GUIDELINES:
+- Always respond in plain text for conversation
+- Only use the JSON format when ALL reservation details are confirmed and complete
+- Be natural and friendly, don't sound robotic
+- If more than 8 guests, politely say: "For parties larger than 8 guests, please contact our staff directly at {restaurant_phone}"
+- When confirming details, list everything clearly
+- Keep responses concise but helpful
+"""
+    
+    def _get_memory_context(self, user_id: str, query: str) -> str:
+        """Get relevant memories from mem0."""
+        if not self._mem0_client:
+            return ""
+        
+        try:
+            memories = self._mem0_client.search(query, user_id=user_id, limit=5)
+            if memories and memories.get('results'):
+                memory_texts = [m.get('memory', '') for m in memories['results'] if m.get('memory')]
+                if memory_texts:
+                    return "\n".join([f"- {m}" for m in memory_texts])
+        except Exception as e:
+            print(f"Error getting memories: {e}", flush=True)
+        
+        return ""
+    
+    def _store_memory(self, user_id: str, user_message: str, assistant_response: str):
+        """Store conversation in mem0."""
+        if not self._mem0_client:
+            return
+        
+        try:
+            self._mem0_client.add(
+                messages=[
+                    {"role": "user", "content": user_message},
+                    {"role": "assistant", "content": assistant_response}
+                ],
+                user_id=user_id
+            )
+            print(f"Stored memory for user {user_id}", flush=True)
+        except Exception as e:
+            print(f"Error storing memory: {e}", flush=True)
+    
+    def _save_reservation(self, reservation_data: Dict[str, Any], customer_phone: str) -> bool:
+        """Save reservation to database."""
         with self.app.app_context():
             try:
-                reservation_date = datetime.strptime(booking.date, '%Y-%m-%d').date()
-                reservation_time = datetime.strptime(booking.time, '%H:%M').time()
-                party_size = booking.guests
-                
-                tables = Table.query.filter_by(
-                    restaurant_id=self.restaurant_id,
-                    is_active=True
-                ).filter(Table.capacity >= party_size).order_by(Table.capacity).all()
-                
-                selected_table = None
-                for table in tables:
-                    existing = Reservation.query.filter_by(
-                        table_id=table.id,
-                        reservation_date=reservation_date,
-                        reservation_time=reservation_time
-                    ).filter(Reservation.status.in_(['pending', 'confirmed'])).first()
-                    
-                    if not existing:
-                        selected_table = table
-                        break
-                
-                if not selected_table:
-                    return {'success': False, 'error': 'No tables available'}
+                # Parse date and time
+                res_date = datetime.strptime(reservation_data['date'], '%Y-%m-%d').date()
+                res_time = datetime.strptime(reservation_data['time'], '%H:%M').time()
                 
                 reservation = Reservation(
                     restaurant_id=self.restaurant_id,
-                    table_id=selected_table.id,
-                    customer_name=booking.customer_name,
-                    customer_phone=booking.customer_phone,
-                    customer_email=booking.customer_email or '',
-                    party_size=party_size,
-                    reservation_date=reservation_date,
-                    reservation_time=reservation_time,
-                    special_requests=booking.special_requests or '',
+                    customer_name=reservation_data['name'],
+                    customer_phone=reservation_data.get('phone', customer_phone),
+                    customer_email=None,
+                    date=res_date,
+                    time=res_time,
+                    party_size=reservation_data['guests'],
+                    special_requests=reservation_data.get('special_requests'),
                     status='confirmed',
-                    source='ai_assistant'
+                    source='whatsapp',
+                    created_at=datetime.utcnow()
                 )
+                
                 db.session.add(reservation)
-                
-                restaurant = Restaurant.query.get(self.restaurant_id)
-                if restaurant and restaurant.tenant:
-                    tenant = restaurant.tenant
-                    if hasattr(tenant, 'trial_booking_count'):
-                        tenant.trial_booking_count += 1
-                        db.session.add(tenant)
-                
                 db.session.commit()
                 
-                return {
-                    'success': True,
-                    'reservation_id': reservation.id,
-                    'table_name': selected_table.name,
-                    'table_location': selected_table.location
-                }
+                print(f"Reservation saved: {reservation.id}", flush=True)
+                return True
             except Exception as e:
+                print(f"Error saving reservation: {e}", flush=True)
                 db.session.rollback()
-                return {'success': False, 'error': str(e)}
+                return False
     
-    def _ask_for_missing_info(self, conv_state: ConversationState, booking: BookingDetails) -> AssistantResponse:
-        """Generate response asking for the next missing piece of information"""
-        missing = booking.get_missing_fields()
+    def chat(
+        self,
+        message: str,
+        conversation_id: str,
+        sender_name: Optional[str] = None,
+        sender_phone: Optional[str] = None
+    ) -> AssistantResponse:
+        """
+        Process a chat message and return a response.
         
-        if 'date' in missing:
-            conv_state.last_question = 'date'
-            conv_state.state = BookingState.AWAITING_DATE
-            return AssistantResponse(
-                text="When would you like to dine? You can type a date or select below:",
-                buttons=self._get_next_7_dates(),
-                button_type='date',
-                conversation_state=conv_state
+        Args:
+            message: User's message
+            conversation_id: Chatwoot conversation ID for history tracking
+            sender_name: Customer name from Chatwoot
+            sender_phone: Customer phone from Chatwoot
+        
+        Returns:
+            AssistantResponse with text and optional reservation data
+        """
+        print(f"\n{'='*60}", flush=True)
+        print(f"=== RESERVATION ASSISTANT ===", flush=True)
+        print(f"Conversation ID: {conversation_id}", flush=True)
+        print(f"Message: {message}", flush=True)
+        print(f"Sender: {sender_name} / {sender_phone}", flush=True)
+        
+        # Generate user ID for mem0
+        user_id = f"restaurant_{self.restaurant_id}_user_{sender_phone or conversation_id}"
+        
+        # Get conversation history from database
+        conversation_history = get_conversation_history(self.restaurant_id, conversation_id, self.app)
+        print(f"Loaded {len(conversation_history)} previous messages", flush=True)
+        
+        # Get memory context from mem0
+        memory_context = self._get_memory_context(user_id, message)
+        
+        # Create system prompt
+        system_prompt = self._create_system_prompt(sender_name, sender_phone)
+        
+        # Add memory context if available
+        if memory_context:
+            system_prompt += f"\n\nRELEVANT CUSTOMER HISTORY FROM PREVIOUS VISITS:\n{memory_context}"
+        
+        # Build messages for OpenAI
+        messages = [{"role": "system", "content": system_prompt}]
+        
+        # Add conversation history
+        messages.extend(conversation_history)
+        
+        # Add current user message
+        messages.append({"role": "user", "content": message})
+        
+        print(f"Sending {len(messages)} messages to OpenAI", flush=True)
+        
+        # Get response from OpenAI
+        try:
+            response = self.openai_client.chat.completions.create(
+                model="gpt-4o",
+                messages=messages,
+                temperature=0.7,
+                max_tokens=1000
             )
-        elif 'time' in missing:
-            conv_state.last_question = 'time'
-            conv_state.state = BookingState.AWAITING_TIME
-            date_text = booking.date_display or booking.date
+            
+            assistant_message = response.choices[0].message.content
+            print(f"OpenAI response: {assistant_message[:200]}...", flush=True)
+        except Exception as e:
+            print(f"OpenAI error: {e}", flush=True)
             return AssistantResponse(
-                text=f"Great! {date_text}. What time would you prefer?",
-                buttons=self._get_time_buttons(),
-                button_type='time',
-                conversation_state=conv_state
-            )
-        elif 'guests' in missing:
-            conv_state.last_question = 'guests'
-            conv_state.state = BookingState.AWAITING_GUESTS
-            return AssistantResponse(
-                text="How many guests will be dining?",
-                buttons=self._get_guest_buttons(),
-                button_type='guests',
-                conversation_state=conv_state
+                text="I'm sorry, I'm having trouble processing your request. Please try again.",
+                reservation=None,
+                conversation_cleared=False
             )
         
-        # All info collected - shouldn't reach here
+        # Add messages to conversation history
+        add_to_conversation_history(self.restaurant_id, conversation_id, "user", message, self.app)
+        add_to_conversation_history(self.restaurant_id, conversation_id, "assistant", assistant_message, self.app)
+        
+        # Store in mem0
+        self._store_memory(user_id, message, assistant_message)
+        
+        # Check if this is a completed reservation
+        reservation_data = None
+        conversation_cleared = False
+        final_response = assistant_message
+        
+        if "reservation_complete" in assistant_message:
+            try:
+                # Extract JSON from response
+                json_start = assistant_message.find('{')
+                json_end = assistant_message.rfind('}') + 1
+                
+                if json_start != -1 and json_end > json_start:
+                    json_str = assistant_message[json_start:json_end]
+                    parsed = json.loads(json_str)
+                    
+                    if parsed.get('reservation_complete'):
+                        # Validate with Pydantic
+                        reservation = TableReservation(**parsed['data'])
+                        reservation_data = reservation.model_dump()
+                        
+                        # Save to database
+                        self._save_reservation(reservation_data, sender_phone or '')
+                        
+                        # Generate confirmation message
+                        special_req_text = f"\n📝 Special Requests: {reservation_data['special_requests']}" if reservation_data.get('special_requests') else ""
+                        
+                        final_response = f"""✅ Reservation Confirmed!
+
+📅 Date: {reservation_data['date']}
+🕐 Time: {reservation_data['time']}
+👥 Guests: {reservation_data['guests']}
+👤 Name: {reservation_data['name']}
+📞 Phone: {reservation_data['phone']}{special_req_text}
+
+Thank you for your reservation! We look forward to welcoming you. You will receive a confirmation shortly."""
+                        
+                        # Clear conversation history after successful reservation
+                        clear_conversation_history(self.restaurant_id, conversation_id, self.app)
+                        conversation_cleared = True
+                        
+                        print(f"Reservation completed and saved!", flush=True)
+                        
+            except (json.JSONDecodeError, ValidationError, KeyError) as e:
+                print(f"Failed to parse reservation JSON: {e}", flush=True)
+        
         return AssistantResponse(
-            text="I have all the information needed.",
-            conversation_state=conv_state
+            text=final_response,
+            reservation=reservation_data,
+            conversation_cleared=conversation_cleared
         )
     
-    def _answer_question(self, question: str, topic: Optional[str] = None) -> str:
-        """Use OpenAI to answer a question about the restaurant"""
-        restaurant_name = self._restaurant_info.get('name', 'our restaurant')
-        knowledge_base = self._restaurant_info.get('knowledge_base', '')
-        
-        system_prompt = f"""You are a helpful assistant for {restaurant_name}.
-Answer the customer's question concisely and friendly.
-
-Restaurant Info:
-- Name: {restaurant_name}
-- Address: {self._restaurant_info.get('address', '')}, {self._restaurant_info.get('city', '')}
-- Phone: {self._restaurant_info.get('phone', '')}
-
-{"Knowledge Base: " + knowledge_base if knowledge_base else ""}
-
-If you don't know the answer, say so politely and offer to help with a reservation.
-Keep responses brief."""
-
-        try:
-            response = self._client.chat.completions.create(
-                model="gpt-4.1-nano",
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": question}
-                ],
-                max_tokens=300,
-                temperature=0.7
-            )
-            return response.choices[0].message.content.strip()
-        except Exception as e:
-            return f"I apologize, I couldn't process your question. Would you like to make a reservation instead?"
-    
-    def _process_contextual_response(self, message: str, conv_state: ConversationState) -> Optional[Tuple[str, Any]]:
+    def chat_sync(
+        self,
+        message: str,
+        session_id: str,
+        conversation_history: List[Dict] = None,
+        sender_name: Optional[str] = None,
+        sender_phone: Optional[str] = None
+    ) -> str:
         """
-        Process a response based on what we last asked the user.
-        Returns (field_name, parsed_value) or None if not parseable.
+        Synchronous chat method for compatibility with existing webhook.
+        Returns JSON string response.
+        
+        Args:
+            message: User's message
+            session_id: Chatwoot conversation ID
+            conversation_history: Ignored (we use database)
+            sender_name: Customer name
+            sender_phone: Customer phone
+        
+        Returns:
+            JSON string with response
         """
-        last_question = conv_state.last_question
-        print(f"Processing contextual response. Last question: {last_question}, Message: {message}", flush=True)
+        response = self.chat(
+            message=message,
+            conversation_id=session_id,
+            sender_name=sender_name,
+            sender_phone=sender_phone
+        )
         
-        if last_question == 'guests':
-            # Try to parse guest count
-            guests = parse_number_from_text(message)
-            if guests:
-                print(f"Parsed guests from context: {guests}", flush=True)
-                return ('guests', guests)
-        
-        elif last_question == 'date':
-            # Try to parse date
-            date_str, date_display = parse_date_from_text(message)
-            if date_str:
-                print(f"Parsed date from context: {date_str}", flush=True)
-                return ('date', (date_str, date_display))
-        
-        elif last_question == 'time':
-            # Try to parse time
-            time_str, time_display = parse_time_from_text(message)
-            if time_str:
-                print(f"Parsed time from context: {time_str}", flush=True)
-                return ('time', (time_str, time_display))
-        
-        return None
-    
-    def chat_sync(self, message: str, session_id: Optional[str] = None,
-                  conversation_history: List[Dict] = None,
-                  sender_name: Optional[str] = None,
-                  sender_phone: Optional[str] = None) -> str:
-        """
-        Process user message and return response.
-        Uses OpenAI for intelligent entity extraction.
-        State is persisted to database between messages.
-        """
-        self._get_restaurant_info()
-        restaurant_name = self._restaurant_info.get('name', 'our restaurant')
-        
-        # Update customer info
-        if sender_name:
-            self._customer_info['name'] = sender_name
-        if sender_phone:
-            self._customer_info['phone'] = sender_phone
-        
-        # Load state from database (KEY CHANGE!)
-        conv_state = None
-        if session_id:
-            conv_state = load_conversation_state(self.restaurant_id, session_id, self.app)
-        
-        # If no saved state, create new one
-        if not conv_state:
-            conv_state = ConversationState(
-                restaurant_id=self.restaurant_id,
-                timezone=self._timezone
-            )
-        
-        booking = conv_state.booking_details
-        
-        # Update customer info in state
-        if sender_name and not conv_state.incoming_customer_name:
-            conv_state.incoming_customer_name = sender_name
-        if sender_phone and not conv_state.incoming_customer_phone:
-            conv_state.incoming_customer_phone = sender_phone
-        
-        message_lower = message.lower().strip()
-        
-        print(f"=== AI ASSISTANT ===", flush=True)
-        print(f"Session ID: {session_id}", flush=True)
-        print(f"State: {conv_state.state}", flush=True)
-        print(f"Last question: {conv_state.last_question}", flush=True)
-        print(f"Message: {message}", flush=True)
-        print(f"Booking so far: date={booking.date}, time={booking.time}, guests={booking.guests}", flush=True)
-        
-        # =================================================================
-        # CHECK FOR NEW RESERVATION INTENT - Reset state if user starts over
-        # =================================================================
-        
-        # Keywords that indicate a new reservation request
-        new_reservation_keywords = [
-            'table for', 'book a table', 'make a reservation', 'reserve a table',
-            'i want to book', 'i would like to book', 'i want to make', 'i would like to make',
-            'new reservation', 'start over', 'begin again', 'restart'
-        ]
-        
-        # Check if user is starting a new reservation while in a confirmation state
-        if conv_state.state in [BookingState.AWAITING_FINAL_CONFIRMATION, 
-                                 BookingState.AWAITING_NAME_CONFIRMATION,
-                                 BookingState.AWAITING_SPECIAL_REQUESTS]:
-            is_new_reservation = any(kw in message_lower for kw in new_reservation_keywords)
-            
-            if is_new_reservation:
-                print(f"Detected new reservation intent - resetting state", flush=True)
-                # Reset the state and booking details
-                conv_state.state = BookingState.INITIAL
-                conv_state.booking_details = BookingDetails()
-                conv_state.last_question = None
-                booking = conv_state.booking_details
-                # Clear the saved state
-                if session_id:
-                    clear_conversation_state(self.restaurant_id, session_id, self.app)
-        
-        # Retrieve memories for context (if available)
-        memory_context = ""
-        if self._memory_service and self._memory_service.is_available and sender_phone:
-            try:
-                # Get relevant memories for this customer
-                memories = self._memory_service.search_memories(
-                    query=message,
-                    phone=sender_phone,
-                    restaurant_id=self.restaurant_id,
-                    limit=5
-                )
-                if memories:
-                    memory_context = format_memories_for_context(memories)
-                    print(f"Retrieved {len(memories)} memories for context", flush=True)
-                
-                # Also get customer context (name, preferences, etc.)
-                customer_context = self._memory_service.get_customer_context(
-                    phone=sender_phone,
-                    restaurant_id=self.restaurant_id
-                )
-                if customer_context.customer_name and not conv_state.incoming_customer_name:
-                    conv_state.incoming_customer_name = customer_context.customer_name
-                    print(f"Retrieved customer name from memory: {customer_context.customer_name}", flush=True)
-            except Exception as e:
-                print(f"Error retrieving memories: {e}", flush=True)
-        
-        # Helper function to save state and return response
-        def respond(response: AssistantResponse) -> str:
-            if session_id:
-                save_conversation_state(self.restaurant_id, session_id, response.conversation_state, self.app)
-            
-            # Store conversation in memory (async-safe)
-            if self._memory_service and self._memory_service.is_available and sender_phone:
-                try:
-                    self._memory_service.add_conversation_memory(
-                        user_message=message,
-                        assistant_response=response.text,
-                        phone=sender_phone,
-                        restaurant_id=self.restaurant_id
-                    )
-                except Exception as e:
-                    print(f"Error storing memory: {e}", flush=True)
-            
-            return response.model_dump_json()
-        
-        # =================================================================
-        # FIRST: Try context-aware parsing for direct answers
-        # =================================================================
-        
-        if conv_state.state in [BookingState.AWAITING_DATE, BookingState.AWAITING_TIME, 
-                                BookingState.AWAITING_GUESTS, BookingState.COLLECTING_INFO]:
-            contextual_result = self._process_contextual_response(message, conv_state)
-            
-            if contextual_result:
-                field_name, value = contextual_result
-                
-                if field_name == 'guests':
-                    booking.guests = value
-                    print(f"Set guests from contextual parsing: {value}", flush=True)
-                    
-                    # Check for large party
-                    if booking.guests > self.MAX_GUESTS_WITHOUT_HANDOVER:
-                        booking.requires_human_handover = True
-                        booking.handover_reason = f"Large party ({booking.guests} guests)"
-                        conv_state.state = BookingState.HANDOVER_TO_HUMAN
-                        conv_state.booking_details = booking
-                        
-                        customer_name = conv_state.incoming_customer_name or "Guest"
-                        customer_phone = conv_state.incoming_customer_phone or "Not provided"
-                        
-                        return respond(AssistantResponse(
-                            text=f"For {booking.guests} guests, our staff will assist you personally.\n\n"
-                                 f"Your Request:\n"
-                                 f"- Date: {booking.date_display or booking.date or 'TBD'}\n"
-                                 f"- Time: {booking.time_display or booking.time or 'TBD'}\n"
-                                 f"- Guests: {booking.guests}\n\n"
-                                 f"Contact: {customer_name} ({customer_phone})\n\n"
-                                 f"Our team will contact you within 24 hours. Any special requests?",
-                            conversation_state=conv_state
-                        ))
-                
-                elif field_name == 'date':
-                    date_str, date_display = value
-                    booking.date = date_str
-                    booking.date_display = date_display
-                    print(f"Set date from contextual parsing: {date_str}", flush=True)
-                
-                elif field_name == 'time':
-                    time_str, time_display = value
-                    booking.time = time_str
-                    booking.time_display = time_display
-                    print(f"Set time from contextual parsing: {time_str}", flush=True)
-                
-                conv_state.booking_details = booking
-                conv_state.state = BookingState.COLLECTING_INFO
-                
-                # Check if all info is now complete
-                if booking.is_complete():
-                    customer_name = conv_state.incoming_customer_name
-                    customer_phone = conv_state.incoming_customer_phone
-                    
-                    # Check if the name looks like a phone number (common Chatwoot issue)
-                    name_is_valid = customer_name and not is_phone_number_like(customer_name)
-                    
-                    if name_is_valid and customer_phone:
-                        # We have a valid name and phone - ask for confirmation
-                        booking.customer_name = customer_name
-                        booking.customer_phone = customer_phone
-                        conv_state.state = BookingState.AWAITING_NAME_CONFIRMATION
-                        conv_state.booking_details = booking
-                        
-                        return respond(AssistantResponse(
-                            text=f"Great! I have your reservation:\n\n"
-                                 f"Date: {booking.date_display or booking.date}\n"
-                                 f"Time: {booking.time_display or booking.time}\n"
-                                 f"Guests: {booking.guests}\n\n"
-                                 f"Is this contact info correct?\n"
-                                 f"Name: {customer_name}\n"
-                                 f"Phone: {customer_phone}",
-                            buttons=self._get_yes_no_buttons(),
-                            button_type='confirm_contact',
-                            conversation_state=conv_state
-                        ))
-                    else:
-                        # Name is missing or looks like a phone number - ask for name
-                        # Store the phone for later use
-                        if customer_phone:
-                            booking.customer_phone = customer_phone
-                        conv_state.state = BookingState.AWAITING_NAME_INPUT
-                        conv_state.booking_details = booking
-                        return respond(AssistantResponse(
-                            text=f"Great! {booking.date_display or booking.date} at {booking.time_display or booking.time} for {booking.guests}.\n\n"
-                                 f"May I have your name for the reservation?",
-                            conversation_state=conv_state
-                        ))
-                else:
-                    # Ask for next missing info
-                    response = self._ask_for_missing_info(conv_state, booking)
-                    return respond(response)
-        
-        # =================================================================
-        # HANDLE STATES THAT EXPECT SPECIFIC INPUT
-        # =================================================================
-        
-        # --- AWAITING NAME CONFIRMATION ---
-        if conv_state.state == BookingState.AWAITING_NAME_CONFIRMATION:
-            if message_lower in ['yes', 'correct', 'y', 'confirm', 'that\'s right', 'thats right', 'si', 'ja']:
-                conv_state.state = BookingState.AWAITING_SPECIAL_REQUESTS
-                return respond(AssistantResponse(
-                    text="Do you have any special requests?",
-                    buttons=self._get_special_request_buttons(),
-                    button_type='special_requests',
-                    conversation_state=conv_state
-                ))
-            
-            elif message_lower in ['no', 'wrong', 'n', 'update', 'change']:
-                booking.customer_name = None
-                booking.customer_phone = None
-                conv_state.state = BookingState.AWAITING_NAME_INPUT
-                conv_state.booking_details = booking
-                return respond(AssistantResponse(
-                    text="Please provide your name for the reservation:",
-                    conversation_state=conv_state
-                ))
-            
-            else:
-                # User said something else - ask for clarification
-                customer_name = conv_state.incoming_customer_name or "your contact"
-                customer_phone = conv_state.incoming_customer_phone or "your phone"
-                
-                # Check if name looks like phone number
-                if is_phone_number_like(customer_name):
-                    customer_name = "(name needed)"
-                
-                return respond(AssistantResponse(
-                    text=f"I have:\n"
-                         f"Name: {customer_name}\n"
-                         f"Phone: {customer_phone}\n\n"
-                         f"Please reply 'Yes' if correct, or 'No' to update.",
-                    buttons=self._get_yes_no_buttons(),
-                    button_type='confirm_contact',
-                    conversation_state=conv_state
-                ))
-        
-        # --- AWAITING NAME INPUT ---
-        if conv_state.state == BookingState.AWAITING_NAME_INPUT:
-            if len(message) >= 2:
-                booking.customer_name = message.strip()
-                if conv_state.incoming_customer_phone:
-                    booking.customer_phone = conv_state.incoming_customer_phone
-                    conv_state.state = BookingState.AWAITING_SPECIAL_REQUESTS
-                    conv_state.booking_details = booking
-                    return respond(AssistantResponse(
-                        text="Do you have any special requests?",
-                        buttons=self._get_special_request_buttons(),
-                        button_type='special_requests',
-                        conversation_state=conv_state
-                    ))
-                else:
-                    conv_state.state = BookingState.AWAITING_PHONE_INPUT
-                    conv_state.booking_details = booking
-                    return respond(AssistantResponse(
-                        text=f"Thanks {booking.customer_name.split()[0]}! What's your phone number?",
-                        conversation_state=conv_state
-                    ))
-        
-        # --- AWAITING PHONE INPUT ---
-        if conv_state.state == BookingState.AWAITING_PHONE_INPUT:
-            digits = ''.join(c for c in message if c.isdigit())
-            if len(digits) >= 7:
-                booking.customer_phone = message.strip()
-                conv_state.state = BookingState.AWAITING_SPECIAL_REQUESTS
-                conv_state.booking_details = booking
-                return respond(AssistantResponse(
-                    text="Do you have any special requests?",
-                    buttons=self._get_special_request_buttons(),
-                    button_type='special_requests',
-                    conversation_state=conv_state
-                ))
-            else:
-                return respond(AssistantResponse(
-                    text="Please provide a valid phone number:",
-                    conversation_state=conv_state
-                ))
-        
-        # --- AWAITING SPECIAL REQUESTS ---
-        if conv_state.state == BookingState.AWAITING_SPECIAL_REQUESTS:
-            special_map = {
-                'none': None,
-                'window': 'Window seat preferred',
-                'quiet': 'Quiet area preferred',
-                'birthday': 'Birthday celebration',
-                'anniversary': 'Anniversary celebration',
-                'other': None
-            }
-            
-            if message_lower in special_map:
-                if message_lower == 'other':
-                    return respond(AssistantResponse(
-                        text="Please type your special request:",
-                        conversation_state=conv_state
-                    ))
-                booking.special_requests = special_map[message_lower]
-            else:
-                booking.special_requests = message.strip() if message_lower != 'none' else None
-            
-            conv_state.state = BookingState.AWAITING_FINAL_CONFIRMATION
-            conv_state.booking_details = booking
-            
-            summary = (
-                f"Reservation Summary:\n\n"
-                f"Date: {booking.date_display or booking.date}\n"
-                f"Time: {booking.time_display or booking.time}\n"
-                f"Guests: {booking.guests}\n"
-                f"Name: {booking.customer_name}\n"
-                f"Phone: {booking.customer_phone}\n"
-            )
-            if booking.special_requests:
-                summary += f"Special requests: {booking.special_requests}\n"
-            summary += f"\nRestaurant: {restaurant_name}\n\nConfirm reservation?"
-            
-            return respond(AssistantResponse(
-                text=summary,
-                buttons=self._get_confirm_buttons(),
-                button_type='final_confirm',
-                conversation_state=conv_state
-            ))
-        
-        # --- AWAITING FINAL CONFIRMATION ---
-        if conv_state.state == BookingState.AWAITING_FINAL_CONFIRMATION:
-            # Check for confirmation - be flexible with matching
-            confirm_words = ['confirm', 'yes', 'y', 'book', 'si', 'ja', 'ok', 'okay', 'sure', 'absolutely', 'definitely', 'great', 'perfect']
-            cancel_words = ['cancel', 'no', 'n', 'stop', 'nevermind', 'never mind', 'abort']
-            
-            # Check if message starts with or contains confirmation words
-            is_confirmation = any(
-                message_lower == word or 
-                message_lower.startswith(word + ' ') or 
-                message_lower.startswith(word + ',') or
-                message_lower.startswith(word + '!')
-                for word in confirm_words
-            )
-            is_cancellation = any(word in message_lower for word in cancel_words)
-            
-            if is_confirmation and not is_cancellation:
-                result = self._make_reservation(booking)
-                
-                if result['success']:
-                    conv_state.state = BookingState.COMPLETED
-                    # Clear state after successful booking
-                    if session_id:
-                        clear_conversation_state(self.restaurant_id, session_id, self.app)
-                    
-                    # Store reservation in memory for future reference
-                    if self._memory_service and self._memory_service.is_available and sender_phone:
-                        try:
-                            self._memory_service.add_reservation_memory(
-                                phone=sender_phone,
-                                restaurant_id=self.restaurant_id,
-                                reservation_details={
-                                    'date': booking.date,
-                                    'date_display': booking.date_display,
-                                    'time': booking.time,
-                                    'time_display': booking.time_display,
-                                    'guests': booking.guests,
-                                    'customer_name': booking.customer_name,
-                                    'special_requests': booking.special_requests,
-                                    'reservation_id': result['reservation_id'],
-                                    'table_name': result['table_name']
-                                }
-                            )
-                            # Also store customer name for future lookups
-                            if booking.customer_name:
-                                self._memory_service.add_preference(
-                                    phone=sender_phone,
-                                    restaurant_id=self.restaurant_id,
-                                    preference=f"Customer name is {booking.customer_name}",
-                                    category="identity"
-                                )
-                            # Store special requests as preferences
-                            if booking.special_requests:
-                                self._memory_service.add_preference(
-                                    phone=sender_phone,
-                                    restaurant_id=self.restaurant_id,
-                                    preference=booking.special_requests,
-                                    category="seating"
-                                )
-                            print(f"Stored reservation in memory for {sender_phone}", flush=True)
-                        except Exception as e:
-                            print(f"Error storing reservation in memory: {e}", flush=True)
-                    
-                    return respond(AssistantResponse(
-                        text=f"Confirmed!\n\n"
-                             f"Date: {booking.date_display or booking.date} at {booking.time_display or booking.time}\n"
-                             f"Guests: {booking.guests}\n"
-                             f"Table: {result['table_name']}\n"
-                             f"Confirmation #: {result['reservation_id']}\n\n"
-                             f"See you at {restaurant_name}!",
-                        conversation_state=conv_state
-                    ))
-                else:
-                    return respond(AssistantResponse(
-                        text=f"Sorry, there was an issue: {result.get('error')}. Please try again.",
-                        conversation_state=conv_state
-                    ))
-            
-            elif is_cancellation:
-                conv_state.state = BookingState.INITIAL
-                conv_state.booking_details = BookingDetails()
-                # Clear state on cancellation
-                if session_id:
-                    clear_conversation_state(self.restaurant_id, session_id, self.app)
-                return respond(AssistantResponse(
-                    text="Reservation cancelled. How else can I help?",
-                    conversation_state=conv_state
-                ))
-            
-            else:
-                # User said something else - ask for clarification
-                summary = (
-                    f"Your reservation:\n\n"
-                    f"📅 {booking.date_display or booking.date}\n"
-                    f"🕐 {booking.time_display or booking.time}\n"
-                    f"👥 {booking.guests} guests\n"
-                    f"📛 {booking.customer_name}\n"
-                )
-                if booking.special_requests:
-                    summary += f"📝 {booking.special_requests}\n"
-                summary += f"\nPlease reply 'Yes' to confirm or 'No' to cancel."
-                
-                return respond(AssistantResponse(
-                    text=summary,
-                    buttons=self._get_confirm_buttons(),
-                    button_type='final_confirm',
-                    conversation_state=conv_state
-                ))
-        
-        # --- HANDOVER TO HUMAN ---
-        if conv_state.state == BookingState.HANDOVER_TO_HUMAN:
-            if message.strip():
-                if booking.special_requests:
-                    booking.special_requests += f"\n{message}"
-                else:
-                    booking.special_requests = message
-                conv_state.booking_details = booking
-            
-            conv_state.state = BookingState.COMPLETED
-            return respond(AssistantResponse(
-                text="Thank you! Our team will contact you within 24 hours.",
-                conversation_state=conv_state
-            ))
-        
-        # =================================================================
-        # EXTRACT INFO FROM MESSAGE USING OPENAI (for complex messages)
-        # =================================================================
-        
-        # Build context hint for OpenAI
-        context_hint = None
-        if conv_state.last_question == 'guests':
-            context_hint = "How many guests will be dining?"
-        elif conv_state.last_question == 'date':
-            context_hint = "When would you like to dine?"
-        elif conv_state.last_question == 'time':
-            context_hint = "What time would you prefer?"
-        
-        extracted = self._extract_reservation_info(message, context_hint)
-        print(f"Extracted: intent={extracted.has_reservation_intent}, date={extracted.date}, time={extracted.time}, guests={extracted.guests}", flush=True)
-        
-        # Handle questions
-        if extracted.is_question and not extracted.has_reservation_intent:
-            answer = self._answer_question(message, extracted.question_topic)
-            return respond(AssistantResponse(
-                text=answer,
-                conversation_state=conv_state
-            ))
-        
-        # =================================================================
-        # COLLECTING INFO STATE - Process extracted data
-        # =================================================================
-        
-        if conv_state.state in [BookingState.INITIAL, BookingState.COLLECTING_INFO,
-                                BookingState.AWAITING_DATE, BookingState.AWAITING_TIME, 
-                                BookingState.AWAITING_GUESTS]:
-            # Update booking with any extracted info
-            if extracted.date:
-                booking.date = extracted.date
-                booking.date_display = extracted.date_display
-            if extracted.time:
-                booking.time = extracted.time
-                booking.time_display = extracted.time_display
-            if extracted.guests:
-                booking.guests = extracted.guests
-            if extracted.name:
-                booking.customer_name = extracted.name
-            
-            conv_state.booking_details = booking
-            
-            # Check if reservation intent detected
-            if extracted.has_reservation_intent or conv_state.state != BookingState.INITIAL:
-                conv_state.state = BookingState.COLLECTING_INFO
-                
-                # Check for large party
-                if booking.guests and booking.guests > self.MAX_GUESTS_WITHOUT_HANDOVER:
-                    booking.requires_human_handover = True
-                    booking.handover_reason = f"Large party ({booking.guests} guests)"
-                    conv_state.state = BookingState.HANDOVER_TO_HUMAN
-                    conv_state.booking_details = booking
-                    
-                    customer_name = conv_state.incoming_customer_name or "Guest"
-                    customer_phone = conv_state.incoming_customer_phone or "Not provided"
-                    
-                    return respond(AssistantResponse(
-                        text=f"For {booking.guests} guests, our staff will assist you personally.\n\n"
-                             f"Your Request:\n"
-                             f"- Date: {booking.date_display or booking.date or 'TBD'}\n"
-                             f"- Time: {booking.time_display or booking.time or 'TBD'}\n"
-                             f"- Guests: {booking.guests}\n\n"
-                             f"Contact: {customer_name} ({customer_phone})\n\n"
-                             f"Our team will contact you within 24 hours. Any special requests?",
-                        conversation_state=conv_state
-                    ))
-                
-                # Check if all required info is collected
-                if booking.is_complete():
-                    # Move to name confirmation
-                    customer_name = conv_state.incoming_customer_name
-                    customer_phone = conv_state.incoming_customer_phone
-                    
-                    # Check if the name looks like a phone number (common Chatwoot issue)
-                    name_is_valid = customer_name and not is_phone_number_like(customer_name)
-                    
-                    if name_is_valid and customer_phone:
-                        # We have a valid name and phone - ask for confirmation
-                        booking.customer_name = customer_name
-                        booking.customer_phone = customer_phone
-                        conv_state.state = BookingState.AWAITING_NAME_CONFIRMATION
-                        conv_state.booking_details = booking
-                        
-                        return respond(AssistantResponse(
-                            text=f"Great! I have your reservation:\n\n"
-                                 f"Date: {booking.date_display or booking.date}\n"
-                                 f"Time: {booking.time_display or booking.time}\n"
-                                 f"Guests: {booking.guests}\n\n"
-                                 f"Is this contact info correct?\n"
-                                 f"Name: {customer_name}\n"
-                                 f"Phone: {customer_phone}",
-                            buttons=self._get_yes_no_buttons(),
-                            button_type='confirm_contact',
-                            conversation_state=conv_state
-                        ))
-                    else:
-                        # Name is missing or looks like a phone number - ask for name
-                        # Store the phone for later use
-                        if customer_phone:
-                            booking.customer_phone = customer_phone
-                        conv_state.state = BookingState.AWAITING_NAME_INPUT
-                        conv_state.booking_details = booking
-                        return respond(AssistantResponse(
-                            text=f"Great! {booking.date_display or booking.date} at {booking.time_display or booking.time} for {booking.guests}.\n\n"
-                                 f"May I have your name for the reservation?",
-                            conversation_state=conv_state
-                        ))
-                else:
-                    # Ask for missing info
-                    response = self._ask_for_missing_info(conv_state, booking)
-                    return respond(response)
-        
-        # =================================================================
-        # DEFAULT: Welcome message
-        # =================================================================
-        
-        return respond(AssistantResponse(
-            text=f"Welcome to {restaurant_name}!\n\n"
-                 "I can help you make a reservation. Just tell me:\n"
-                 "- When you'd like to dine\n"
-                 "- What time\n"
-                 "- How many guests\n\n"
-                 "For example: \"Table for 4 tomorrow at 7pm\"",
-            conversation_state=conv_state
-        ))
+        # Return in format expected by webhook
+        return json.dumps({
+            "text": response.text,
+            "buttons": None,
+            "button_type": None,
+            "reservation": response.reservation
+        })
 
 
 # =============================================================================
 # FACTORY FUNCTION
 # =============================================================================
 
-def get_assistant(restaurant_id: int, app=None, 
-                  customer_name: Optional[str] = None,
-                  customer_phone: Optional[str] = None) -> ReservationAssistant:
-    """Get a reservation assistant for a restaurant."""
-    customer_info = {}
-    if customer_name:
-        customer_info['name'] = customer_name
-    if customer_phone:
-        customer_info['phone'] = customer_phone
+def get_assistant(restaurant_id: int, app: Flask) -> ReservationAssistant:
+    """
+    Get or create a ReservationAssistant for a restaurant.
     
-    return ReservationAssistant(restaurant_id, app, customer_info)
+    Args:
+        restaurant_id: Restaurant ID
+        app: Flask app for database context
+    
+    Returns:
+        ReservationAssistant instance
+    """
+    return ReservationAssistant(restaurant_id, app)
