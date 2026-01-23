@@ -77,7 +77,7 @@ def get_conversation_history(restaurant_id: int, conversation_id: str, app: Flas
             # Look for existing conversation history
             record = AIConversation.query.filter_by(
                 restaurant_id=restaurant_id,
-                conversation_type=f"history_{conversation_id}"
+                conversation_type=f"h_{conversation_id}"[:20]
             ).first()
             
             if record and record.transcript:
@@ -108,7 +108,7 @@ def save_conversation_history(restaurant_id: int, conversation_id: str, history:
         try:
             record = AIConversation.query.filter_by(
                 restaurant_id=restaurant_id,
-                conversation_type=f"history_{conversation_id}"
+                conversation_type=f"h_{conversation_id}"[:20]
             ).first()
             
             if record:
@@ -117,7 +117,7 @@ def save_conversation_history(restaurant_id: int, conversation_id: str, history:
                 # Create new record - don't set created_at/updated_at as they may be auto-managed
                 record = AIConversation(
                     restaurant_id=restaurant_id,
-                    conversation_type=f"history_{conversation_id}",
+                    conversation_type=f"h_{conversation_id}"[:20],
                     transcript=json.dumps(history)
                 )
                 db.session.add(record)
@@ -137,7 +137,7 @@ def clear_conversation_history(restaurant_id: int, conversation_id: str, app: Fl
         try:
             AIConversation.query.filter_by(
                 restaurant_id=restaurant_id,
-                conversation_type=f"history_{conversation_id}"
+                conversation_type=f"h_{conversation_id}"[:20]
             ).delete()
             db.session.commit()
             print(f"Cleared conversation history for {conversation_id}", flush=True)
