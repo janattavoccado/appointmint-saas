@@ -220,13 +220,18 @@ def ai_chat():
         return jsonify({'error': 'Restaurant not found'}), 404
 
     # Generate consistent session ID if not provided
-    # Use IP + User-Agent + restaurant_id to create a unique but consistent session
+    # Use X-Forwarded-For (real client IP on Heroku) + User-Agent + restaurant_id
     if not session_id:
-        client_ip = request.remote_addr or 'unknown'
+        # On Heroku, X-Forwarded-For contains the real client IP
+        forwarded_for = request.headers.get('X-Forwarded-For', '')
+        # Get the first IP in the chain (the original client)
+        client_ip = forwarded_for.split(',')[0].strip() if forwarded_for else request.remote_addr or 'unknown'
         user_agent = request.headers.get('User-Agent', 'unknown')
-        session_hash = hashlib.md5(f"{client_ip}:{user_agent}:{restaurant_id}".encode()).hexdigest()[:16]
+        # Use only the first part of user agent to avoid minor version differences
+        ua_base = user_agent.split(' ')[0] if user_agent else 'unknown'
+        session_hash = hashlib.md5(f"{client_ip}:{ua_base}:{restaurant_id}".encode()).hexdigest()[:16]
         session_id = f"web_{session_hash}"
-        print(f"Generated session ID: {session_id}", flush=True)
+        print(f"Generated session ID: {session_id} (IP: {client_ip})", flush=True)
     
     print(f"=== AI CHAT ENDPOINT ===", flush=True)
     print(f"Session ID: {session_id}", flush=True)
