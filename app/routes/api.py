@@ -874,18 +874,22 @@ def handle_agent_bot_message(restaurant, payload):
                 print(f"AI Response (Fallback): {ai_response[:200] if ai_response else 'None'}", flush=True)
             
             # Parse the response if it's JSON (contains buttons)
+            buttons = None
             try:
                 response_data = json.loads(ai_response)
                 text_response = response_data.get('text', ai_response)
+                buttons = response_data.get('buttons')  # Get buttons if present
             except (json.JSONDecodeError, TypeError):
                 text_response = ai_response
             
             print(f"Final text response: {text_response[:200] if text_response else 'None'}", flush=True)
+            if buttons:
+                print(f"Buttons to send: {buttons}", flush=True)
             
-            # Send response back to Chatwoot
+            # Send response back to Chatwoot (with buttons if present)
             if restaurant.chatwoot_api_key and restaurant.chatwoot_base_url:
                 print("Sending response to Chatwoot...", flush=True)
-                result = send_chatwoot_response(restaurant, conversation_id, text_response)
+                result = send_chatwoot_response(restaurant, conversation_id, text_response, buttons)
                 print(f"Send result: {result}", flush=True)
             else:
                 print("WARNING: Chatwoot not configured, skipping response", flush=True)
@@ -1051,19 +1055,23 @@ def handle_chatwoot_message(restaurant, data):
                 print(f"AI Response (Fallback): {ai_response[:200]}", flush=True)
 
             # Parse the response if it's JSON (contains buttons)
+            buttons = None
             try:
                 response_data = json.loads(ai_response)
                 text_response = response_data.get('text', ai_response)
+                buttons = response_data.get('buttons')  # Get buttons if present
             except (json.JSONDecodeError, TypeError):
                 text_response = ai_response
             
             print(f"Final text response: {text_response[:200]}", flush=True)
+            if buttons:
+                print(f"Buttons to send: {buttons}", flush=True)
 
-            # Send response back to Chatwoot
+            # Send response back to Chatwoot (with buttons if present)
             print(f"Chatwoot config - API Key: {bool(restaurant.chatwoot_api_key)}, Base URL: {restaurant.chatwoot_base_url}", flush=True)
             if restaurant.chatwoot_api_key and restaurant.chatwoot_base_url:
                 print("Sending response to Chatwoot...", flush=True)
-                result = send_chatwoot_response(restaurant, conversation_id, text_response)
+                result = send_chatwoot_response(restaurant, conversation_id, text_response, buttons)
                 print(f"Send result: {result}", flush=True)
             else:
                 print("WARNING: Chatwoot not configured, skipping response", flush=True)
@@ -1125,10 +1133,16 @@ def handle_chatwoot_conversation_created(restaurant, data):
         return jsonify({'error': str(e)}), 500
 
 
-def send_chatwoot_response(restaurant, conversation_id, message):
+def send_chatwoot_response(restaurant, conversation_id, message, buttons=None):
     """
     Send a message back to Chatwoot conversation.
     Uses the Chatwoot Messages API: POST /api/v1/accounts/{account_id}/conversations/{conversation_id}/messages
+    
+    Args:
+        restaurant: Restaurant object with Chatwoot config
+        conversation_id: Chatwoot conversation ID
+        message: Text message to send
+        buttons: Optional list of button dicts with 'title' and 'value' keys for interactive messages
     """
     import requests
 
@@ -1160,6 +1174,21 @@ def send_chatwoot_response(restaurant, conversation_id, message):
             'message_type': 'outgoing',
             'private': False
         }
+        
+        # Add interactive buttons if provided (for WhatsApp quick replies)
+        if buttons and len(buttons) > 0:
+            items = []
+            for btn in buttons:
+                items.append({
+                    'title': btn.get('title', btn.get('value', 'Option')),
+                    'value': btn.get('value', btn.get('title', 'option'))
+                })
+            
+            payload['content_type'] = 'input_select'
+            payload['content_attributes'] = {
+                'items': items
+            }
+            print(f"Adding interactive buttons: {items}", flush=True)
 
         print(f"Sending payload: {json.dumps(payload)[:200]}", flush=True)
 

@@ -2,6 +2,7 @@
 AI Assistant for Restaurant Reservations
 Based on conversation-history approach that maintains full context.
 Integrates with Chatwoot/WhatsApp and persists conversation history in database.
+Supports interactive buttons for confirmations.
 """
 
 from flask import Flask
@@ -43,6 +44,12 @@ class TableReservation(BaseModel):
         }
 
 
+class InteractiveButton(BaseModel):
+    """A button for interactive messages"""
+    title: str = Field(..., description="Button display text")
+    value: str = Field(..., description="Value sent when button is clicked")
+
+
 class ConversationMessage(BaseModel):
     """A single message in the conversation"""
     role: str = Field(..., description="Message role: 'user' or 'assistant'")
@@ -54,6 +61,8 @@ class AssistantResponse(BaseModel):
     text: str = Field(..., description="Response text to send to user")
     reservation: Optional[Dict[str, Any]] = Field(None, description="Completed reservation data if any")
     conversation_cleared: bool = Field(False, description="Whether conversation was cleared")
+    buttons: Optional[List[InteractiveButton]] = Field(None, description="Interactive buttons to display")
+    needs_confirmation: bool = Field(False, description="Whether this is a confirmation request")
 
 
 # =============================================================================
@@ -301,7 +310,25 @@ CRITICAL: MAINTAIN CONVERSATION CONTEXT
 - When the customer provides additional details, ADD them to what you already know
 - If the customer's name and phone are already known (shown above), use them and just confirm
 
-3. When you have collected ALL required information (date, time, guests, name, phone), respond with a JSON object in this EXACT format:
+CONFIRMATION PROCESS:
+When you have collected ALL required information (date, time, guests, name, phone), you MUST:
+1. First, show a summary and ask for confirmation with this EXACT format:
+
+[CONFIRMATION_NEEDED]
+📋 Reservation Summary:
+📅 Date: [date]
+🕐 Time: [time]
+👥 Guests: [number]
+👤 Name: [name]
+📞 Phone: [phone]
+📝 Special Requests: [requests or "None"]
+
+Please confirm your reservation:
+[END_CONFIRMATION]
+
+2. Wait for the customer to confirm (they will say "yes", "confirm", etc. or click a button)
+
+3. ONLY after confirmation, respond with the JSON object:
 {{
   "reservation_complete": true,
   "data": {{
@@ -314,16 +341,12 @@ CRITICAL: MAINTAIN CONVERSATION CONTEXT
   }}
 }}
 
-4. Before completing the reservation, ALWAYS confirm all details with the customer in a summary.
-
-5. Be conversational, friendly, and helpful. Guide the conversation naturally.
-
 RESPONSE GUIDELINES:
 - Always respond in plain text for conversation
-- Only use the JSON format when ALL reservation details are confirmed and complete
+- Use the [CONFIRMATION_NEEDED]...[END_CONFIRMATION] format when asking for final confirmation
+- Only use the JSON format AFTER the customer confirms
 - Be natural and friendly, don't sound robotic
 - If more than 8 guests, politely say: "For parties larger than 8 guests, please contact our staff directly at {restaurant_phone}"
-- When confirming details, list everything clearly
 - Keep responses concise but helpful
 """
     
@@ -398,6 +421,24 @@ RESPONSE GUIDELINES:
                 traceback.print_exc()
                 db.session.rollback()
                 return False
+    
+    def _check_for_confirmation_request(self, message: str) -> tuple[bool, str]:
+        """
+        Check if the AI response contains a confirmation request.
+        Returns (needs_confirmation, cleaned_message)
+        """
+        if "[CONFIRMATION_NEEDED]" in message and "[END_CONFIRMATION]" in message:
+            # Extract the confirmation message
+            start = message.find("[CONFIRMATION_NEEDED]")
+            end = message.find("[END_CONFIRMATION]") + len("[END_CONFIRMATION]")
+            
+            # Get the confirmation content without markers
+            confirmation_content = message[start:end]
+            confirmation_content = confirmation_content.replace("[CONFIRMATION_NEEDED]", "").replace("[END_CONFIRMATION]", "").strip()
+            
+            return True, confirmation_content
+        
+        return False, message
     
     def chat(
         self,
@@ -482,7 +523,22 @@ RESPONSE GUIDELINES:
         reservation_data = None
         conversation_cleared = False
         final_response = assistant_message
+        buttons = None
+        needs_confirmation = False
         
+        # Check for confirmation request
+        needs_confirmation, cleaned_message = self._check_for_confirmation_request(assistant_message)
+        if needs_confirmation:
+            final_response = cleaned_message
+            # Add confirmation buttons
+            buttons = [
+                InteractiveButton(title="✅ Confirm Reservation", value="confirm"),
+                InteractiveButton(title="❌ Cancel", value="cancel"),
+                InteractiveButton(title="✏️ Make Changes", value="change")
+            ]
+            print("Confirmation request detected, adding buttons", flush=True)
+        
+        # Check if this is a completed reservation (user confirmed)
         if "reservation_complete" in assistant_message:
             try:
                 # Extract JSON from response
@@ -517,6 +573,8 @@ Thank you for your reservation! We look forward to welcoming you. You will recei
                         # Clear conversation history after successful reservation
                         clear_conversation_history(self.restaurant_id, conversation_id, self.app)
                         conversation_cleared = True
+                        buttons = None  # No buttons needed after confirmation
+                        needs_confirmation = False
                         
                         print(f"Reservation completed and saved!", flush=True)
                         
@@ -526,7 +584,9 @@ Thank you for your reservation! We look forward to welcoming you. You will recei
         return AssistantResponse(
             text=final_response,
             reservation=reservation_data,
-            conversation_cleared=conversation_cleared
+            conversation_cleared=conversation_cleared,
+            buttons=buttons,
+            needs_confirmation=needs_confirmation
         )
     
     def chat_sync(
@@ -558,11 +618,16 @@ Thank you for your reservation! We look forward to welcoming you. You will recei
             sender_phone=sender_phone
         )
         
+        # Convert buttons to dict format
+        buttons_data = None
+        if response.buttons:
+            buttons_data = [{"title": b.title, "value": b.value} for b in response.buttons]
+        
         # Return in format expected by webhook
         return json.dumps({
             "text": response.text,
-            "buttons": None,
-            "button_type": None,
+            "buttons": buttons_data,
+            "needs_confirmation": response.needs_confirmation,
             "reservation": response.reservation
         })
 
