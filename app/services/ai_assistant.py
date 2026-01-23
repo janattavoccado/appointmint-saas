@@ -113,14 +113,12 @@ def save_conversation_history(restaurant_id: int, conversation_id: str, history:
             
             if record:
                 record.transcript = json.dumps(history)
-                record.updated_at = datetime.utcnow()
             else:
+                # Create new record - don't set created_at/updated_at as they may be auto-managed
                 record = AIConversation(
                     restaurant_id=restaurant_id,
                     conversation_type=f"history_{conversation_id}",
-                    transcript=json.dumps(history),
-                    created_at=datetime.utcnow(),
-                    updated_at=datetime.utcnow()
+                    transcript=json.dumps(history)
                 )
                 db.session.add(record)
             
@@ -128,6 +126,8 @@ def save_conversation_history(restaurant_id: int, conversation_id: str, history:
             print(f"Saved conversation history for {conversation_id}: {len(history)} messages", flush=True)
         except Exception as e:
             print(f"Error saving conversation history: {e}", flush=True)
+            import traceback
+            traceback.print_exc()
             db.session.rollback()
 
 
@@ -333,7 +333,12 @@ RESPONSE GUIDELINES:
             return ""
         
         try:
-            memories = self._mem0_client.search(query, user_id=user_id, limit=5)
+            # mem0 v2 API requires filters parameter
+            memories = self._mem0_client.search(
+                query, 
+                filters={"user_id": user_id}, 
+                limit=5
+            )
             if memories and memories.get('results'):
                 memory_texts = [m.get('memory', '') for m in memories['results'] if m.get('memory')]
                 if memory_texts:
