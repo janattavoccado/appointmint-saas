@@ -373,18 +373,18 @@ RESPONSE GUIDELINES:
                 res_date = datetime.strptime(reservation_data['date'], '%Y-%m-%d').date()
                 res_time = datetime.strptime(reservation_data['time'], '%H:%M').time()
                 
+                # Use correct field names for Reservation model
                 reservation = Reservation(
                     restaurant_id=self.restaurant_id,
                     customer_name=reservation_data['name'],
                     customer_phone=reservation_data.get('phone', customer_phone),
                     customer_email=None,
-                    date=res_date,
-                    time=res_time,
+                    reservation_date=res_date,
+                    reservation_time=res_time,
                     party_size=reservation_data['guests'],
                     special_requests=reservation_data.get('special_requests'),
                     status='confirmed',
-                    source='whatsapp',
-                    created_at=datetime.utcnow()
+                    source='whatsapp'
                 )
                 
                 db.session.add(reservation)
@@ -394,6 +394,8 @@ RESPONSE GUIDELINES:
                 return True
             except Exception as e:
                 print(f"Error saving reservation: {e}", flush=True)
+                import traceback
+                traceback.print_exc()
                 db.session.rollback()
                 return False
     
