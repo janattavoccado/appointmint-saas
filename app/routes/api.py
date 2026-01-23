@@ -200,6 +200,8 @@ def ai_chat():
         "conversation_history": [{"role": "user", "content": "..."}]
     }
     """
+    import hashlib
+    
     data = request.get_json()
     message = data.get('message')
     restaurant_id = data.get('restaurant_id')
@@ -217,28 +219,48 @@ def ai_chat():
     if not restaurant:
         return jsonify({'error': 'Restaurant not found'}), 404
 
-    # Determine if this is a new session (no conversation history)
-    is_session_start = not conversation_history or len(conversation_history) == 0
+    # Generate consistent session ID if not provided
+    # Use IP + User-Agent + restaurant_id to create a unique but consistent session
+    if not session_id:
+        client_ip = request.remote_addr or 'unknown'
+        user_agent = request.headers.get('User-Agent', 'unknown')
+        session_hash = hashlib.md5(f"{client_ip}:{user_agent}:{restaurant_id}".encode()).hexdigest()[:16]
+        session_id = f"web_{session_hash}"
+        print(f"Generated session ID: {session_id}", flush=True)
+    
+    print(f"=== AI CHAT ENDPOINT ===", flush=True)
+    print(f"Session ID: {session_id}", flush=True)
+    print(f"Message: {message}", flush=True)
 
     try:
-        # Try using OpenAI Agents SDK first (Python 3.13+)
+        # Use the AI assistant with database-backed conversation history
         try:
             from app.services.ai_assistant import get_assistant
             assistant = get_assistant(restaurant_id, current_app._get_current_object())
-            response = assistant.chat_sync(message, session_id, conversation_history)
+            # Pass session_id as conversation_id - the assistant will load history from database
+            response = assistant.chat_sync(message, session_id, [])
         except Exception as agents_error:
             # Fall back to standard OpenAI API
             current_app.logger.warning(f"Agents SDK failed, using fallback: {agents_error}")
+            import traceback
+            traceback.print_exc()
             from app.services.ai_assistant_fallback import ReservationAssistantFallback
             assistant = ReservationAssistantFallback(restaurant_id, current_app._get_current_object())
             response = assistant.chat_sync(message, session_id, conversation_history)
+
+        # Parse response to get text
+        try:
+            response_data = json.loads(response)
+            text_response = response_data.get('text', response)
+        except (json.JSONDecodeError, TypeError):
+            text_response = response
 
         # Log conversation
         conversation = AIConversation(
             restaurant_id=restaurant_id,
             conversation_type='text',
-            transcript=f"User: {message}\nAI: {response}",
-            tokens_used=0  # Token tracking can be added later
+            transcript=f"User: {message}\nAI: {text_response}",
+            tokens_used=0
         )
         db.session.add(conversation)
         db.session.commit()
@@ -252,6 +274,8 @@ def ai_chat():
 
     except Exception as e:
         current_app.logger.error(f"AI Chat Error: {str(e)}")
+        import traceback
+        traceback.print_exc()
         return jsonify({'error': str(e)}), 500
 
 
