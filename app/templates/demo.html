@@ -25,13 +25,13 @@
             <h3 style="font-size: 1.25rem; margin-bottom: 0.5rem;">Demo Video Coming Soon</h3>
             <p style="color: var(--text-light);">We're preparing an interactive demo to showcase AppointMint's capabilities.</p>
         </div>
-        
-        <!-- Interactive Demo -->
+
+        <!-- Interactive Demo
         <h2 style="font-size: 1.75rem; font-weight: 700; margin-bottom: 1.5rem; color: var(--secondary-color);">Try the AI Assistant</h2>
         <p style="color: var(--text-light); margin-bottom: 2rem;">
             Chat with our AI assistant below to see how it handles reservation requests.
         </p>
-        
+
         <div style="background: white; border: 1px solid var(--gray-200); border-radius: var(--radius-lg); overflow: hidden; text-align: left;">
             <div style="background: var(--secondary-color); color: white; padding: 1rem 1.5rem;">
                 <h4 style="font-size: 1rem; font-weight: 600;">AppointMint AI Assistant</h4>
@@ -46,10 +46,11 @@
                 <button id="sendBtn" class="btn btn-primary">Send</button>
             </div>
         </div>
-        
+
         <p style="color: var(--text-light); font-size: 0.875rem; margin-top: 1rem;">
             Note: This is a demo. In production, the AI connects to your restaurant's actual availability.
         </p>
+        -->
     </div>
 </section>
 
@@ -67,7 +68,7 @@
     const chatMessages = document.getElementById('chatMessages');
     const chatInput = document.getElementById('chatInput');
     const sendBtn = document.getElementById('sendBtn');
-    
+
     const demoResponses = [
         "Great! I'd be happy to help you with that. How many guests will be dining?",
         "Perfect! Let me check our availability for that date and party size. One moment please...",
@@ -75,9 +76,9 @@
         "Wonderful choice! May I have your name and phone number to complete the reservation?",
         "Thank you! Your reservation is confirmed. You'll receive a confirmation text shortly. Is there anything else I can help you with?"
     ];
-    
+
     let responseIndex = 0;
-    
+
     function addMessage(text, isUser) {
         const messageDiv = document.createElement('div');
         messageDiv.style.cssText = `
@@ -92,14 +93,14 @@
         chatMessages.appendChild(messageDiv);
         chatMessages.scrollTop = chatMessages.scrollHeight;
     }
-    
+
     function handleSend() {
         const message = chatInput.value.trim();
         if (!message) return;
-        
+
         addMessage(message, true);
         chatInput.value = '';
-        
+
         // Simulate AI response
         setTimeout(() => {
             if (responseIndex < demoResponses.length) {
@@ -110,7 +111,7 @@
             }
         }, 1000);
     }
-    
+
     sendBtn.addEventListener('click', handleSend);
     chatInput.addEventListener('keypress', (e) => {
         if (e.key === 'Enter') handleSend();
