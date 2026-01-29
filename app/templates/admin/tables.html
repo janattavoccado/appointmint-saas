@@ -1,224 +1,192 @@
 {% extends "admin/base.html" %}
 
-{% block title %}Tables - {{ restaurant.name }} - AppointMint{% endblock %}
+{% block title %}Tables - {{ restaurant.name }}{% endblock %}
 
-{% block admin_content %}
-<div class="page-header">
-    <div>
-        <h1 class="page-title">Tables</h1>
-        <p class="page-subtitle">Manage tables for {{ restaurant.name }}</p>
-    </div>
-    <div class="d-flex gap-2">
-        <a href="{{ url_for('admin.restaurants') }}" class="btn btn-outline-secondary">
-            <i class="fas fa-arrow-left me-2"></i>Back to Restaurants
-        </a>
-        <a href="{{ url_for('admin.add_table', restaurant_id=restaurant.id) }}" class="btn btn-primary">
-            <i class="fas fa-plus me-2"></i>Add Table
-        </a>
-    </div>
-</div>
-
-<!-- Stats Cards -->
-<div class="row g-4 mb-4">
-    <div class="col-md-4">
-        <div class="stat-card">
-            <div class="stat-icon" style="background: linear-gradient(135deg, #4CAF50, #66BB6A);">
-                <i class="fas fa-chair"></i>
-            </div>
-            <div class="stat-content">
-                <div class="stat-value">{{ tables|length }}</div>
-                <div class="stat-label">Total Tables</div>
-            </div>
+{% block content %}
+<div class="container-fluid">
+    <!-- Header -->
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h2><i class="fas fa-chair me-2"></i>Tables</h2>
+            <p class="text-muted mb-0">Manage tables for {{ restaurant.name }}</p>
         </div>
-    </div>
-    <div class="col-md-4">
-        <div class="stat-card">
-            <div class="stat-icon" style="background: linear-gradient(135deg, #2196F3, #42A5F5);">
-                <i class="fas fa-users"></i>
-            </div>
-            <div class="stat-content">
-                <div class="stat-value">{% set total_capacity = namespace(count=0) %}{% for t in tables %}{% set total_capacity.count = total_capacity.count + t.capacity %}{% endfor %}{{ total_capacity.count }}</div>
-                <div class="stat-label">Total Capacity</div>
-            </div>
-        </div>
-    </div>
-    <div class="col-md-4">
-        <div class="stat-card">
-            <div class="stat-icon" style="background: linear-gradient(135deg, #FF9800, #FFB74D);">
-                <i class="fas fa-check-circle"></i>
-            </div>
-            <div class="stat-content">
-                <div class="stat-value">{{ tables|selectattr('is_available')|list|length }}</div>
-                <div class="stat-label">Available Tables</div>
-            </div>
-        </div>
-    </div>
-</div>
-
-<!-- Tables Grid -->
-{% if tables %}
-<div class="row g-4">
-    {% for table in tables %}
-    <div class="col-md-6 col-lg-4">
-        <div class="card h-100">
-            <div class="card-body">
-                <div class="d-flex align-items-start justify-content-between mb-3">
-                    <div class="d-flex align-items-center gap-3">
-                        <div class="table-icon">
-                            <i class="fas fa-chair"></i>
-                        </div>
-                        <div>
-                            <h5 class="mb-0">{{ table.table_number }}</h5>
-                            <small class="text-muted">{{ table.location|capitalize if table.location else 'No location' }}</small>
-                        </div>
-                    </div>
-                    {% if table.is_available %}
-                    <span class="status-badge status-active">Available</span>
-                    {% else %}
-                    <span class="status-badge status-inactive">Unavailable</span>
-                    {% endif %}
-                </div>
-                
-                <div class="table-info">
-                    <div class="info-item">
-                        <i class="fas fa-users text-primary"></i>
-                        <span>Capacity: {{ table.capacity }} guests</span>
-                    </div>
-                    {% if table.notes %}
-                    <div class="info-item">
-                        <i class="fas fa-sticky-note text-warning"></i>
-                        <span>{{ table.notes }}</span>
-                    </div>
-                    {% endif %}
-                </div>
-            </div>
-            <div class="card-footer bg-transparent border-top-0">
-                <div class="d-flex gap-2">
-                    <a href="{{ url_for('admin.edit_table', restaurant_id=restaurant.id, id=table.id) }}" class="btn btn-outline-primary btn-sm flex-fill">
-                        <i class="fas fa-edit me-1"></i>Edit
-                    </a>
-                    <button class="btn btn-outline-danger btn-sm" onclick="confirmDelete({{ table.id }}, '{{ table.table_number }}')">
-                        <i class="fas fa-trash me-1"></i>Delete
-                    </button>
-                </div>
-            </div>
-        </div>
-    </div>
-    {% endfor %}
-</div>
-{% else %}
-<div class="card">
-    <div class="card-body">
-        <div class="empty-state">
-            <div class="empty-icon">
-                <i class="fas fa-chair"></i>
-            </div>
-            <h5>No tables yet</h5>
-            <p class="text-muted">Add tables to start accepting reservations</p>
+        <div class="btn-group">
+            <a href="{{ url_for('admin.restaurants') }}" class="btn btn-outline-secondary">
+                <i class="fas fa-arrow-left me-1"></i> Back to Restaurants
+            </a>
+            <a href="{{ url_for('admin.floor_plan_editor', restaurant_id=restaurant.id) }}" class="btn btn-outline-primary">
+                <i class="fas fa-th me-1"></i> Floor Plan Editor
+            </a>
             <a href="{{ url_for('admin.add_table', restaurant_id=restaurant.id) }}" class="btn btn-primary">
-                <i class="fas fa-plus me-2"></i>Add First Table
+                <i class="fas fa-plus me-1"></i> Add Table
             </a>
         </div>
     </div>
-</div>
-{% endif %}
 
-<!-- Delete Modal -->
+    <!-- Stats Cards -->
+    <div class="row mb-4">
+        <div class="col-md-4">
+            <div class="card border-start border-4 border-primary">
+                <div class="card-body">
+                    <div class="d-flex align-items-center">
+                        <div class="rounded-3 p-3 bg-primary bg-opacity-10 me-3">
+                            <i class="fas fa-chair fa-2x text-primary"></i>
+                        </div>
+                        <div>
+                            <h2 class="mb-0">{{ tables|length }}</h2>
+                            <p class="text-muted mb-0">Total Tables</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card border-start border-4 border-info">
+                <div class="card-body">
+                    <div class="d-flex align-items-center">
+                        <div class="rounded-3 p-3 bg-info bg-opacity-10 me-3">
+                            <i class="fas fa-users fa-2x text-info"></i>
+                        </div>
+                        <div>
+                            <h2 class="mb-0">{{ tables|sum(attribute='capacity') }}</h2>
+                            <p class="text-muted mb-0">Total Capacity</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card border-start border-4 border-success">
+                <div class="card-body">
+                    <div class="d-flex align-items-center">
+                        <div class="rounded-3 p-3 bg-success bg-opacity-10 me-3">
+                            <i class="fas fa-check-circle fa-2x text-success"></i>
+                        </div>
+                        <div>
+                            <h2 class="mb-0">{{ tables|selectattr('is_available')|list|length }}</h2>
+                            <p class="text-muted mb-0">Available Tables</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Floor Plan Editor Call-to-Action -->
+    <div class="card mb-4 bg-light border-0">
+        <div class="card-body d-flex align-items-center justify-content-between py-4">
+            <div class="d-flex align-items-center">
+                <div class="rounded-3 p-3 bg-primary bg-opacity-10 me-3">
+                    <i class="fas fa-th fa-2x text-primary"></i>
+                </div>
+                <div>
+                    <h5 class="mb-1">Visual Floor Plan Editor</h5>
+                    <p class="text-muted mb-0">Design your restaurant layout with drag-and-drop tables. Import from Excel or create from scratch.</p>
+                </div>
+            </div>
+            <a href="{{ url_for('admin.floor_plan_editor', restaurant_id=restaurant.id) }}" class="btn btn-primary btn-lg">
+                <i class="fas fa-th me-2"></i> Open Floor Plan Editor
+            </a>
+        </div>
+    </div>
+
+    <!-- Tables List -->
+    {% if tables %}
+    <div class="row">
+        {% for table in tables %}
+        <div class="col-md-6 col-lg-4 mb-4">
+            <div class="card h-100">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-start mb-3">
+                        <div class="d-flex align-items-center">
+                            <div class="rounded-3 p-2 bg-primary bg-opacity-10 me-3">
+                                <i class="fas fa-chair fa-lg text-primary"></i>
+                            </div>
+                            <div>
+                                <h5 class="mb-0">Table #{{ table.table_number }}</h5>
+                                <small class="text-muted">{{ table.location or 'No location' }}</small>
+                            </div>
+                        </div>
+                        {% if table.is_available %}
+                        <span class="badge bg-success">Available</span>
+                        {% else %}
+                        <span class="badge bg-secondary">Unavailable</span>
+                        {% endif %}
+                    </div>
+                    
+                    <div class="mb-3">
+                        <p class="mb-1">
+                            <i class="fas fa-users text-muted me-2"></i>
+                            Capacity: <strong>{{ table.capacity }} guests</strong>
+                        </p>
+                        {% if table.notes %}
+                        <p class="mb-0 text-muted small">
+                            <i class="fas fa-sticky-note me-2"></i>
+                            {{ table.notes }}
+                        </p>
+                        {% endif %}
+                    </div>
+                    
+                    <div class="d-flex gap-2">
+                        <a href="{{ url_for('admin.edit_table', restaurant_id=restaurant.id, id=table.id) }}" class="btn btn-outline-primary flex-grow-1">
+                            <i class="fas fa-edit me-1"></i> Edit
+                        </a>
+                        <button type="button" class="btn btn-outline-danger" onclick="confirmDelete({{ table.id }}, '{{ table.table_number }}')">
+                            <i class="fas fa-trash"></i> Delete
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <div class="card">
+        <div class="card-body text-center py-5">
+            <i class="fas fa-chair fa-4x text-muted mb-4"></i>
+            <h4>No Tables Yet</h4>
+            <p class="text-muted mb-4">Start by adding tables manually or use the Floor Plan Editor to design your layout visually.</p>
+            <div class="d-flex justify-content-center gap-3">
+                <a href="{{ url_for('admin.add_table', restaurant_id=restaurant.id) }}" class="btn btn-primary">
+                    <i class="fas fa-plus me-1"></i> Add Table Manually
+                </a>
+                <a href="{{ url_for('admin.floor_plan_editor', restaurant_id=restaurant.id) }}" class="btn btn-outline-primary">
+                    <i class="fas fa-th me-1"></i> Use Floor Plan Editor
+                </a>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+</div>
+
+<!-- Delete Confirmation Modal -->
 <div class="modal fade" id="deleteModal" tabindex="-1">
-    <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-dialog">
         <div class="modal-content">
-            <div class="modal-header border-0">
+            <div class="modal-header">
                 <h5 class="modal-title">Delete Table</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body">
-                <p>Are you sure you want to delete table <strong id="deleteTableName"></strong>?</p>
-                <p class="text-muted small mb-0">This action cannot be undone.</p>
+                <p>Are you sure you want to delete <strong id="deleteTableName"></strong>?</p>
+                <p class="text-muted small">This action cannot be undone. Any reservations associated with this table will be affected.</p>
             </div>
-            <div class="modal-footer border-0">
-                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
                 <form id="deleteForm" method="POST" style="display: inline;">
-                    <button type="submit" class="btn btn-danger">Delete Table</button>
+                    <button type="submit" class="btn btn-danger">
+                        <i class="fas fa-trash me-1"></i> Delete
+                    </button>
                 </form>
             </div>
         </div>
     </div>
 </div>
 
-<style>
-.table-icon {
-    width: 48px;
-    height: 48px;
-    background: linear-gradient(135deg, #4CAF50, #66BB6A);
-    border-radius: 12px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: white;
-    font-size: 1.25rem;
-}
-
-.table-info {
-    padding: 0.75rem 0;
-    border-top: 1px solid #f1f5f9;
-    margin-top: 1rem;
-}
-
-.info-item {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    font-size: 0.875rem;
-    color: #64748b;
-    margin-bottom: 0.5rem;
-}
-
-.info-item:last-child {
-    margin-bottom: 0;
-}
-
-.status-badge {
-    display: inline-flex;
-    align-items: center;
-    padding: 0.25rem 0.75rem;
-    border-radius: 20px;
-    font-size: 0.75rem;
-    font-weight: 500;
-}
-
-.status-active {
-    background: #dcfce7;
-    color: #166534;
-}
-
-.status-inactive {
-    background: #fee2e2;
-    color: #991b1b;
-}
-
-.empty-state {
-    padding: 4rem 2rem;
-    text-align: center;
-}
-
-.empty-icon {
-    width: 80px;
-    height: 80px;
-    background: #f1f5f9;
-    border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    margin: 0 auto 1.5rem;
-    font-size: 2rem;
-    color: #94a3b8;
-}
-</style>
-
 <script>
-function confirmDelete(id, name) {
-    document.getElementById('deleteTableName').textContent = name;
-    document.getElementById('deleteForm').action = '/admin/restaurants/{{ restaurant.id }}/tables/' + id + '/delete';
+function confirmDelete(tableId, tableName) {
+    document.getElementById('deleteTableName').textContent = 'Table #' + tableName;
+    document.getElementById('deleteForm').action = '{{ url_for("admin.tables", restaurant_id=restaurant.id) }}/' + tableId + '/delete';
     new bootstrap.Modal(document.getElementById('deleteModal')).show();
 }
 </script>
