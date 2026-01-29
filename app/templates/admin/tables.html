@@ -2,162 +2,144 @@
 
 {% block title %}Tables - {{ restaurant.name }}{% endblock %}
 
-{% block content %}
-<div class="container-fluid">
-    <!-- Header -->
-    <div class="d-flex justify-content-between align-items-center mb-4">
-        <div>
-            <h2><i class="fas fa-chair me-2"></i>Tables</h2>
-            <p class="text-muted mb-0">Manage tables for {{ restaurant.name }}</p>
+{% block admin_content %}
+<!-- Header -->
+<div class="page-header">
+    <div>
+        <h1 class="page-title">Tables</h1>
+        <p class="page-subtitle">Manage tables for {{ restaurant.name }}</p>
+    </div>
+    <div class="d-flex gap-2">
+        <a href="{{ url_for('admin.restaurants') }}" class="btn btn-secondary">
+            <i class="fas fa-arrow-left me-1"></i> Back to Restaurants
+        </a>
+        <a href="{{ url_for('admin.floor_plan_editor', restaurant_id=restaurant.id) }}" class="btn btn-outline-primary">
+            <i class="fas fa-th me-1"></i> Floor Plan Editor
+        </a>
+        <a href="{{ url_for('admin.add_table', restaurant_id=restaurant.id) }}" class="btn btn-primary">
+            <i class="fas fa-plus me-1"></i> Add Table
+        </a>
+    </div>
+</div>
+
+<!-- Stats Cards -->
+<div class="row g-4 mb-4">
+    <div class="col-md-4">
+        <div class="stat-card">
+            <div class="stat-icon primary">
+                <i class="fas fa-chair"></i>
+            </div>
+            <div class="stat-value">{{ tables|length }}</div>
+            <div class="stat-label">Total Tables</div>
         </div>
-        <div class="btn-group">
-            <a href="{{ url_for('admin.restaurants') }}" class="btn btn-outline-secondary">
-                <i class="fas fa-arrow-left me-1"></i> Back to Restaurants
+    </div>
+    <div class="col-md-4">
+        <div class="stat-card info">
+            <div class="stat-icon info">
+                <i class="fas fa-users"></i>
+            </div>
+            <div class="stat-value">{{ tables|sum(attribute='capacity') }}</div>
+            <div class="stat-label">Total Capacity</div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="stat-card success">
+            <div class="stat-icon success">
+                <i class="fas fa-check-circle"></i>
+            </div>
+            <div class="stat-value">{{ tables|selectattr('is_available')|list|length }}</div>
+            <div class="stat-label">Available Tables</div>
+        </div>
+    </div>
+</div>
+
+<!-- Floor Plan Editor Call-to-Action -->
+<div class="card mb-4" style="background: linear-gradient(135deg, var(--primary-bg) 0%, #fff 100%);">
+    <div class="card-body d-flex align-items-center justify-content-between py-4">
+        <div class="d-flex align-items-center">
+            <div class="stat-icon primary me-3">
+                <i class="fas fa-th"></i>
+            </div>
+            <div>
+                <h5 class="mb-1" style="font-weight: 600;">Visual Floor Plan Editor</h5>
+                <p class="text-muted mb-0">Design your restaurant layout with drag-and-drop tables. Import from Excel or create from scratch.</p>
+            </div>
+        </div>
+        <a href="{{ url_for('admin.floor_plan_editor', restaurant_id=restaurant.id) }}" class="btn btn-primary btn-lg">
+            <i class="fas fa-th me-2"></i> Open Floor Plan Editor
+        </a>
+    </div>
+</div>
+
+<!-- Tables List -->
+{% if tables %}
+<div class="row g-4">
+    {% for table in tables %}
+    <div class="col-md-6 col-lg-4">
+        <div class="card h-100">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-start mb-3">
+                    <div class="d-flex align-items-center">
+                        <div class="stat-icon primary me-3" style="width: 40px; height: 40px; font-size: 16px;">
+                            <i class="fas fa-chair"></i>
+                        </div>
+                        <div>
+                            <h5 class="mb-0" style="font-weight: 600;">Table #{{ table.table_number }}</h5>
+                            <small class="text-muted">{{ table.location or 'Indoor' }}</small>
+                        </div>
+                    </div>
+                    {% if table.is_available %}
+                    <span class="badge bg-success">Available</span>
+                    {% else %}
+                    <span class="badge bg-secondary">Unavailable</span>
+                    {% endif %}
+                </div>
+                
+                <div class="mb-3">
+                    <p class="mb-1">
+                        <i class="fas fa-users text-muted me-2"></i>
+                        Capacity: <strong>{{ table.capacity }} guests</strong>
+                    </p>
+                    {% if table.notes %}
+                    <p class="mb-0 text-muted small">
+                        <i class="fas fa-sticky-note me-2"></i>
+                        {{ table.notes }}
+                    </p>
+                    {% endif %}
+                </div>
+                
+                <div class="d-flex gap-2">
+                    <a href="{{ url_for('admin.edit_table', restaurant_id=restaurant.id, id=table.id) }}" class="btn btn-outline-primary flex-grow-1">
+                        <i class="fas fa-edit me-1"></i> Edit
+                    </a>
+                    <button type="button" class="btn btn-outline-danger" onclick="confirmDelete({{ table.id }}, '{{ table.table_number }}')">
+                        <i class="fas fa-trash"></i> Delete
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% else %}
+<div class="card">
+    <div class="card-body empty-state">
+        <div class="empty-state-icon">
+            <i class="fas fa-chair"></i>
+        </div>
+        <h4 class="empty-state-title">No Tables Yet</h4>
+        <p class="empty-state-text">Start by adding tables manually or use the Floor Plan Editor to design your layout visually.</p>
+        <div class="d-flex justify-content-center gap-3">
+            <a href="{{ url_for('admin.add_table', restaurant_id=restaurant.id) }}" class="btn btn-primary">
+                <i class="fas fa-plus me-1"></i> Add Table Manually
             </a>
             <a href="{{ url_for('admin.floor_plan_editor', restaurant_id=restaurant.id) }}" class="btn btn-outline-primary">
-                <i class="fas fa-th me-1"></i> Floor Plan Editor
-            </a>
-            <a href="{{ url_for('admin.add_table', restaurant_id=restaurant.id) }}" class="btn btn-primary">
-                <i class="fas fa-plus me-1"></i> Add Table
+                <i class="fas fa-th me-1"></i> Use Floor Plan Editor
             </a>
         </div>
     </div>
-
-    <!-- Stats Cards -->
-    <div class="row mb-4">
-        <div class="col-md-4">
-            <div class="card border-start border-4 border-primary">
-                <div class="card-body">
-                    <div class="d-flex align-items-center">
-                        <div class="rounded-3 p-3 bg-primary bg-opacity-10 me-3">
-                            <i class="fas fa-chair fa-2x text-primary"></i>
-                        </div>
-                        <div>
-                            <h2 class="mb-0">{{ tables|length }}</h2>
-                            <p class="text-muted mb-0">Total Tables</p>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-        <div class="col-md-4">
-            <div class="card border-start border-4 border-info">
-                <div class="card-body">
-                    <div class="d-flex align-items-center">
-                        <div class="rounded-3 p-3 bg-info bg-opacity-10 me-3">
-                            <i class="fas fa-users fa-2x text-info"></i>
-                        </div>
-                        <div>
-                            <h2 class="mb-0">{{ tables|sum(attribute='capacity') }}</h2>
-                            <p class="text-muted mb-0">Total Capacity</p>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-        <div class="col-md-4">
-            <div class="card border-start border-4 border-success">
-                <div class="card-body">
-                    <div class="d-flex align-items-center">
-                        <div class="rounded-3 p-3 bg-success bg-opacity-10 me-3">
-                            <i class="fas fa-check-circle fa-2x text-success"></i>
-                        </div>
-                        <div>
-                            <h2 class="mb-0">{{ tables|selectattr('is_available')|list|length }}</h2>
-                            <p class="text-muted mb-0">Available Tables</p>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Floor Plan Editor Call-to-Action -->
-    <div class="card mb-4 bg-light border-0">
-        <div class="card-body d-flex align-items-center justify-content-between py-4">
-            <div class="d-flex align-items-center">
-                <div class="rounded-3 p-3 bg-primary bg-opacity-10 me-3">
-                    <i class="fas fa-th fa-2x text-primary"></i>
-                </div>
-                <div>
-                    <h5 class="mb-1">Visual Floor Plan Editor</h5>
-                    <p class="text-muted mb-0">Design your restaurant layout with drag-and-drop tables. Import from Excel or create from scratch.</p>
-                </div>
-            </div>
-            <a href="{{ url_for('admin.floor_plan_editor', restaurant_id=restaurant.id) }}" class="btn btn-primary btn-lg">
-                <i class="fas fa-th me-2"></i> Open Floor Plan Editor
-            </a>
-        </div>
-    </div>
-
-    <!-- Tables List -->
-    {% if tables %}
-    <div class="row">
-        {% for table in tables %}
-        <div class="col-md-6 col-lg-4 mb-4">
-            <div class="card h-100">
-                <div class="card-body">
-                    <div class="d-flex justify-content-between align-items-start mb-3">
-                        <div class="d-flex align-items-center">
-                            <div class="rounded-3 p-2 bg-primary bg-opacity-10 me-3">
-                                <i class="fas fa-chair fa-lg text-primary"></i>
-                            </div>
-                            <div>
-                                <h5 class="mb-0">Table #{{ table.table_number }}</h5>
-                                <small class="text-muted">{{ table.location or 'No location' }}</small>
-                            </div>
-                        </div>
-                        {% if table.is_available %}
-                        <span class="badge bg-success">Available</span>
-                        {% else %}
-                        <span class="badge bg-secondary">Unavailable</span>
-                        {% endif %}
-                    </div>
-                    
-                    <div class="mb-3">
-                        <p class="mb-1">
-                            <i class="fas fa-users text-muted me-2"></i>
-                            Capacity: <strong>{{ table.capacity }} guests</strong>
-                        </p>
-                        {% if table.notes %}
-                        <p class="mb-0 text-muted small">
-                            <i class="fas fa-sticky-note me-2"></i>
-                            {{ table.notes }}
-                        </p>
-                        {% endif %}
-                    </div>
-                    
-                    <div class="d-flex gap-2">
-                        <a href="{{ url_for('admin.edit_table', restaurant_id=restaurant.id, id=table.id) }}" class="btn btn-outline-primary flex-grow-1">
-                            <i class="fas fa-edit me-1"></i> Edit
-                        </a>
-                        <button type="button" class="btn btn-outline-danger" onclick="confirmDelete({{ table.id }}, '{{ table.table_number }}')">
-                            <i class="fas fa-trash"></i> Delete
-                        </button>
-                    </div>
-                </div>
-            </div>
-        </div>
-        {% endfor %}
-    </div>
-    {% else %}
-    <div class="card">
-        <div class="card-body text-center py-5">
-            <i class="fas fa-chair fa-4x text-muted mb-4"></i>
-            <h4>No Tables Yet</h4>
-            <p class="text-muted mb-4">Start by adding tables manually or use the Floor Plan Editor to design your layout visually.</p>
-            <div class="d-flex justify-content-center gap-3">
-                <a href="{{ url_for('admin.add_table', restaurant_id=restaurant.id) }}" class="btn btn-primary">
-                    <i class="fas fa-plus me-1"></i> Add Table Manually
-                </a>
-                <a href="{{ url_for('admin.floor_plan_editor', restaurant_id=restaurant.id) }}" class="btn btn-outline-primary">
-                    <i class="fas fa-th me-1"></i> Use Floor Plan Editor
-                </a>
-            </div>
-        </div>
-    </div>
-    {% endif %}
 </div>
+{% endif %}
 
 <!-- Delete Confirmation Modal -->
 <div class="modal fade" id="deleteModal" tabindex="-1">
@@ -182,7 +164,9 @@
         </div>
     </div>
 </div>
+{% endblock %}
 
+{% block extra_js %}
 <script>
 function confirmDelete(tableId, tableName) {
     document.getElementById('deleteTableName').textContent = 'Table #' + tableName;
