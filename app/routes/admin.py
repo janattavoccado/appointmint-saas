@@ -1150,12 +1150,61 @@ def save_floor_plan(restaurant_id):
             )
             db.session.add(cell)
         
+        # =============================================================
+        # SYNC TO MAIN TABLES TABLE
+        # This ensures the restaurant view shows correct table counts
+        # =============================================================
+        
+        # Get existing tables for this restaurant (by table_number)
+        existing_tables = {t.table_number: t for t in Table.query.filter_by(restaurant_id=restaurant_id).all()}
+        synced_table_ids = set()
+        
+        for table_data in floor_plan_data.tables:
+            table_number = table_data.table_id  # e.g., "T1", "T2"
+            
+            if table_number in existing_tables:
+                # Update existing table
+                table = existing_tables[table_number]
+                table.capacity = table_data.seats
+                table.is_active = table_data.is_active
+                table.notes = table_data.notes or table.notes
+                # Set location based on table type
+                if table_data.table_type:
+                    table.location = table_data.table_type
+            else:
+                # Create new table
+                table = Table(
+                    restaurant_id=restaurant_id,
+                    table_number=table_number,
+                    capacity=table_data.seats,
+                    location=table_data.table_type or 'indoor',
+                    is_available=True,
+                    is_active=table_data.is_active,
+                    notes=table_data.notes
+                )
+                db.session.add(table)
+            
+            synced_table_ids.add(table_number)
+        
+        # Optionally: Deactivate tables that are no longer in the floor plan
+        # (but don't delete them to preserve reservation history)
+        for table_number, table in existing_tables.items():
+            if table_number not in synced_table_ids:
+                # Table was removed from floor plan - mark as inactive
+                table.is_active = False
+        
         db.session.commit()
+        
+        # Count synced tables for response
+        total_tables = len(floor_plan_data.tables)
+        total_seats = sum(t.seats for t in floor_plan_data.tables)
         
         return jsonify({
             'success': True,
             'floor_plan_id': floor_plan.id,
-            'message': 'Floor plan saved successfully'
+            'message': f'Floor plan saved successfully. {total_tables} tables with {total_seats} total seats synced.',
+            'tables_synced': total_tables,
+            'total_seats': total_seats
         })
         
     except ValidationError as e:
