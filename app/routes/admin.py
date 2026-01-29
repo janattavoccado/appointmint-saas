@@ -1,4 +1,4 @@
-from flask import Blueprint, render_template, redirect, url_for, flash, request
+from flask import Blueprint, render_template, redirect, url_for, flash, request, jsonify
 from flask_login import login_required, current_user
 from app.models import (
     db, Tenant, User, Restaurant, Table, Reservation, AIConversation,
@@ -1038,3 +1038,334 @@ def regenerate_webhook_token(id):
     flash('Webhook token regenerated. Please update the webhook URL in Chatwoot.', 'warning')
     
     return redirect(url_for('admin.chatwoot_settings', id=id))
+
+
+
+# =============================================================================
+# FLOOR PLAN MANAGEMENT
+# =============================================================================
+
+@admin_bp.route('/restaurants/<int:restaurant_id>/floor-plan')
+@login_required
+@tenant_access_required
+def floor_plan_editor(restaurant_id):
+    """Display the floor plan editor for a restaurant"""
+    restaurant = Restaurant.query.get_or_404(restaurant_id)
+    
+    if not can_access_restaurant(restaurant):
+        flash('Access denied.', 'error')
+        return redirect(url_for('admin.restaurants'))
+    
+    # Try to get existing floor plan
+    floor_plan = None
+    try:
+        from app.models import FloorPlan
+        floor_plan = FloorPlan.query.filter_by(
+            restaurant_id=restaurant_id,
+            is_active=True
+        ).first()
+    except Exception:
+        # FloorPlan model may not exist yet
+        pass
+    
+    return render_template('admin/floor_plan_editor.html',
+                         restaurant=restaurant,
+                         floor_plan=floor_plan)
+
+
+@admin_bp.route('/restaurants/<int:restaurant_id>/floor-plan/save', methods=['POST'])
+@login_required
+@tenant_superuser_required
+def save_floor_plan(restaurant_id):
+    """Save floor plan configuration"""
+    from pydantic import ValidationError
+    from datetime import datetime
+    
+    restaurant = Restaurant.query.get_or_404(restaurant_id)
+    
+    if not can_manage_restaurant(restaurant):
+        return jsonify({'success': False, 'error': 'Access denied'}), 403
+    
+    try:
+        data = request.get_json()
+        
+        # Validate with Pydantic
+        from app.routes.floor_plan_routes import FloorPlanInput
+        floor_plan_data = FloorPlanInput(**data)
+        
+        # Import models
+        from app.models import FloorPlan, TableConfig, FloorCell
+        
+        # Get or create floor plan
+        floor_plan = FloorPlan.query.filter_by(
+            restaurant_id=restaurant_id,
+            is_active=True
+        ).first()
+        
+        if not floor_plan:
+            floor_plan = FloorPlan(restaurant_id=restaurant_id)
+            db.session.add(floor_plan)
+        
+        # Update floor plan properties
+        floor_plan.name = floor_plan_data.name
+        floor_plan.grid_rows = floor_plan_data.grid_rows
+        floor_plan.grid_cols = floor_plan_data.grid_cols
+        floor_plan.cell_size = floor_plan_data.cell_size
+        floor_plan.floor_color = floor_plan_data.floor_color
+        floor_plan.updated_at = datetime.utcnow()
+        
+        db.session.flush()  # Get floor_plan.id
+        
+        # Clear existing tables and floor cells
+        TableConfig.query.filter_by(floor_plan_id=floor_plan.id).delete()
+        FloorCell.query.filter_by(floor_plan_id=floor_plan.id).delete()
+        
+        # Add tables
+        for table_data in floor_plan_data.tables:
+            table = TableConfig(
+                floor_plan_id=floor_plan.id,
+                table_id=table_data.table_id,
+                table_name=table_data.table_name,
+                seats=table_data.seats,
+                shape=table_data.shape,
+                width=table_data.width,
+                height=table_data.height,
+                pos_x=table_data.pos_x,
+                pos_y=table_data.pos_y,
+                table_type=table_data.table_type,
+                is_active=table_data.is_active,
+                min_guests=table_data.min_guests,
+                notes=table_data.notes
+            )
+            db.session.add(table)
+        
+        # Add floor cells
+        for cell_data in floor_plan_data.floor_cells:
+            cell = FloorCell(
+                floor_plan_id=floor_plan.id,
+                pos_x=cell_data.pos_x,
+                pos_y=cell_data.pos_y,
+                cell_type=cell_data.cell_type,
+                color=cell_data.color
+            )
+            db.session.add(cell)
+        
+        db.session.commit()
+        
+        return jsonify({
+            'success': True,
+            'floor_plan_id': floor_plan.id,
+            'message': 'Floor plan saved successfully'
+        })
+        
+    except ValidationError as e:
+        return jsonify({
+            'success': False,
+            'error': 'Validation error',
+            'details': e.errors()
+        }), 400
+    except Exception as e:
+        db.session.rollback()
+        import traceback
+        traceback.print_exc()
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
+@admin_bp.route('/restaurants/<int:restaurant_id>/floor-plan/data')
+@login_required
+@tenant_access_required
+def get_floor_plan_data(restaurant_id):
+    """Get floor plan data as JSON"""
+    restaurant = Restaurant.query.get_or_404(restaurant_id)
+    
+    if not can_access_restaurant(restaurant):
+        return jsonify({'success': False, 'error': 'Access denied'}), 403
+    
+    try:
+        from app.models import FloorPlan
+        floor_plan = FloorPlan.query.filter_by(
+            restaurant_id=restaurant_id,
+            is_active=True
+        ).first()
+        
+        if not floor_plan:
+            return jsonify({
+                'success': True,
+                'floor_plan': None
+            })
+        
+        return jsonify({
+            'success': True,
+            'floor_plan': floor_plan.to_dict()
+        })
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
+@admin_bp.route('/restaurants/<int:restaurant_id>/floor-plan/tables')
+@login_required
+@tenant_access_required
+def get_floor_plan_tables(restaurant_id):
+    """Get all tables for a restaurant's floor plan"""
+    restaurant = Restaurant.query.get_or_404(restaurant_id)
+    
+    if not can_access_restaurant(restaurant):
+        return jsonify({'success': False, 'error': 'Access denied'}), 403
+    
+    try:
+        from app.models import FloorPlan, TableConfig
+        
+        floor_plan = FloorPlan.query.filter_by(
+            restaurant_id=restaurant_id,
+            is_active=True
+        ).first()
+        
+        if not floor_plan:
+            return jsonify({'success': True, 'tables': []})
+        
+        tables = TableConfig.query.filter_by(
+            floor_plan_id=floor_plan.id,
+            is_active=True
+        ).all()
+        
+        return jsonify({
+            'success': True,
+            'tables': [t.to_dict() for t in tables]
+        })
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
+@admin_bp.route('/restaurants/<int:restaurant_id>/floor-plan/upload-excel', methods=['POST'])
+@login_required
+@tenant_superuser_required
+def upload_excel_layout(restaurant_id):
+    """Upload Excel file to parse table layout"""
+    import openpyxl
+    from io import BytesIO
+    
+    restaurant = Restaurant.query.get_or_404(restaurant_id)
+    
+    if not can_manage_restaurant(restaurant):
+        return jsonify({'success': False, 'error': 'Access denied'}), 403
+    
+    if 'file' not in request.files:
+        return jsonify({'success': False, 'error': 'No file uploaded'}), 400
+    
+    file = request.files['file']
+    if not file.filename.endswith(('.xlsx', '.xls')):
+        return jsonify({'success': False, 'error': 'Invalid file type. Please upload an Excel file (.xlsx or .xls)'}), 400
+    
+    try:
+        wb = openpyxl.load_workbook(BytesIO(file.read()))
+        sheet = wb.active
+        
+        # Parse the Excel layout
+        range_ref = sheet.dimensions
+        if not range_ref or range_ref == 'A1:A1':
+            return jsonify({'success': False, 'error': 'Empty spreadsheet'}), 400
+        
+        from openpyxl.utils import range_boundaries
+        min_col, min_row, max_col, max_row = range_boundaries(range_ref)
+        
+        rows = max_row - min_row + 1
+        cols = max_col - min_col + 1
+        
+        green_cells = []
+        dark_cells = []
+        
+        for row in range(min_row, max_row + 1):
+            for col in range(min_col, max_col + 1):
+                cell = sheet.cell(row=row, column=col)
+                fill = cell.fill
+                
+                grid_row = row - min_row
+                grid_col = col - min_col
+                
+                if fill and fill.fgColor:
+                    color_type = fill.fgColor.type
+                    if color_type == 'theme':
+                        theme = fill.fgColor.theme
+                        if theme == 9:  # Green = table
+                            green_cells.append({'row': grid_row, 'col': grid_col})
+                        elif theme == 1:  # Dark = floor
+                            dark_cells.append({'row': grid_row, 'col': grid_col})
+        
+        # Group green cells into tables
+        tables = _find_connected_cells(green_cells)
+        
+        parsed_tables = []
+        for i, table_cells in enumerate(tables, 1):
+            min_r = min(c['row'] for c in table_cells)
+            max_r = max(c['row'] for c in table_cells)
+            min_c = min(c['col'] for c in table_cells)
+            max_c = max(c['col'] for c in table_cells)
+            
+            width = max_c - min_c + 1
+            height = max_r - min_r + 1
+            seats = len(table_cells)
+            
+            parsed_tables.append({
+                'table_id': f'T{i}',
+                'seats': seats,
+                'width': width,
+                'height': height,
+                'pos_x': min_c,
+                'pos_y': min_r,
+                'shape': 'square' if width == height else 'rectangle'
+            })
+        
+        return jsonify({
+            'success': True,
+            'grid_rows': rows,
+            'grid_cols': cols,
+            'tables': parsed_tables,
+            'floor_cells': dark_cells
+        })
+        
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+def _find_connected_cells(cells):
+    """Find groups of connected cells (tables)"""
+    if not cells:
+        return []
+    
+    cell_set = set((c['row'], c['col']) for c in cells)
+    groups = []
+    
+    while cell_set:
+        start = cell_set.pop()
+        group = [{'row': start[0], 'col': start[1]}]
+        queue = [start]
+        
+        while queue:
+            current = queue.pop(0)
+            row, col = current
+            
+            neighbors = [
+                (row-1, col), (row+1, col),
+                (row, col-1), (row, col+1)
+            ]
+            
+            for n in neighbors:
+                if n in cell_set:
+                    cell_set.remove(n)
+                    group.append({'row': n[0], 'col': n[1]})
+                    queue.append(n)
+        
+        groups.append(group)
+    
+    return groups

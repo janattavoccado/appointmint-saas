@@ -371,3 +371,126 @@ class StripeEvent(db.Model):
     
     def __repr__(self):
         return f'<StripeEvent {self.stripe_event_id}>'
+
+
+
+# =============================================================================
+# FLOOR PLAN MODELS
+# =============================================================================
+
+from sqlalchemy import UniqueConstraint
+
+
+class FloorPlan(db.Model):
+    """Floor plan configuration for a restaurant"""
+    __tablename__ = 'floor_plan'
+    
+    id = db.Column(db.Integer, primary_key=True)
+    restaurant_id = db.Column(db.Integer, db.ForeignKey('restaurants.id', ondelete='CASCADE'), nullable=False)
+    name = db.Column(db.String(100), nullable=False, default='Main Floor')
+    grid_rows = db.Column(db.Integer, nullable=False, default=20)
+    grid_cols = db.Column(db.Integer, nullable=False, default=20)
+    cell_size = db.Column(db.Integer, nullable=False, default=40)  # pixels
+    floor_color = db.Column(db.String(20), default='#404040')
+    is_active = db.Column(db.Boolean, default=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    
+    # Relationships
+    restaurant = db.relationship('Restaurant', backref=db.backref('floor_plans', lazy='dynamic'))
+    tables = db.relationship('TableConfig', backref='floor_plan', lazy='dynamic', cascade='all, delete-orphan')
+    floor_cells = db.relationship('FloorCell', backref='floor_plan', lazy='dynamic', cascade='all, delete-orphan')
+    
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'restaurant_id': self.restaurant_id,
+            'name': self.name,
+            'grid_rows': self.grid_rows,
+            'grid_cols': self.grid_cols,
+            'cell_size': self.cell_size,
+            'floor_color': self.floor_color,
+            'is_active': self.is_active,
+            'tables': [t.to_dict() for t in self.tables],
+            'floor_cells': [c.to_dict() for c in self.floor_cells]
+        }
+    
+    def __repr__(self):
+        return f'<FloorPlan {self.name} for Restaurant {self.restaurant_id}>'
+
+
+class TableConfig(db.Model):
+    """Table configuration within a floor plan"""
+    __tablename__ = 'table_config'
+    __table_args__ = (
+        UniqueConstraint('floor_plan_id', 'table_id', name='uq_floor_table'),
+    )
+    
+    id = db.Column(db.Integer, primary_key=True)
+    floor_plan_id = db.Column(db.Integer, db.ForeignKey('floor_plan.id', ondelete='CASCADE'), nullable=False)
+    table_id = db.Column(db.String(20), nullable=False)  # e.g., "T1", "T2"
+    table_name = db.Column(db.String(100))  # e.g., "Window Table", "Corner Booth"
+    seats = db.Column(db.Integer, nullable=False, default=4)
+    shape = db.Column(db.String(20), default='rectangle')  # rectangle, circle, square
+    width = db.Column(db.Integer, nullable=False, default=2)  # grid cells
+    height = db.Column(db.Integer, nullable=False, default=2)  # grid cells
+    pos_x = db.Column(db.Integer, nullable=False, default=0)  # grid position
+    pos_y = db.Column(db.Integer, nullable=False, default=0)  # grid position
+    rotation = db.Column(db.Integer, default=0)  # degrees (0, 90, 180, 270)
+    table_type = db.Column(db.String(50), default='standard')  # standard, counter, high_top, outdoor, booth
+    is_active = db.Column(db.Boolean, default=True)
+    min_guests = db.Column(db.Integer, default=1)
+    max_guests = db.Column(db.Integer)  # if null, uses seats value
+    notes = db.Column(db.Text)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'floor_plan_id': self.floor_plan_id,
+            'table_id': self.table_id,
+            'table_name': self.table_name,
+            'seats': self.seats,
+            'shape': self.shape,
+            'width': self.width,
+            'height': self.height,
+            'pos_x': self.pos_x,
+            'pos_y': self.pos_y,
+            'rotation': self.rotation,
+            'table_type': self.table_type,
+            'is_active': self.is_active,
+            'min_guests': self.min_guests,
+            'max_guests': self.max_guests or self.seats,
+            'notes': self.notes
+        }
+    
+    def __repr__(self):
+        return f'<TableConfig {self.table_id} in FloorPlan {self.floor_plan_id}>'
+
+
+class FloorCell(db.Model):
+    """Individual floor cells for custom floor areas"""
+    __tablename__ = 'floor_cell'
+    __table_args__ = (
+        UniqueConstraint('floor_plan_id', 'pos_x', 'pos_y', name='uq_floor_cell_pos'),
+    )
+    
+    id = db.Column(db.Integer, primary_key=True)
+    floor_plan_id = db.Column(db.Integer, db.ForeignKey('floor_plan.id', ondelete='CASCADE'), nullable=False)
+    pos_x = db.Column(db.Integer, nullable=False)
+    pos_y = db.Column(db.Integer, nullable=False)
+    cell_type = db.Column(db.String(20), default='floor')  # floor, wall, entrance, kitchen, bar
+    color = db.Column(db.String(20))  # custom color override
+    
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'pos_x': self.pos_x,
+            'pos_y': self.pos_y,
+            'cell_type': self.cell_type,
+            'color': self.color
+        }
+    
+    def __repr__(self):
+        return f'<FloorCell ({self.pos_x}, {self.pos_y}) in FloorPlan {self.floor_plan_id}>'

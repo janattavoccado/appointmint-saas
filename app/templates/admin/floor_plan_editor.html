@@ -1,0 +1,1246 @@
+{% extends "admin/base.html" %}
+
+{% block title %}Floor Plan Editor - {{ restaurant.name }}{% endblock %}
+
+{% block extra_css %}
+<style>
+    .floor-plan-container {
+        display: flex;
+        gap: 20px;
+        height: calc(100vh - 200px);
+        min-height: 600px;
+    }
+    
+    /* Left Panel - Tools */
+    .tools-panel {
+        width: 200px;
+        background: #f8f9fa;
+        border-radius: 8px;
+        padding: 15px;
+        flex-shrink: 0;
+    }
+    
+    .tools-panel h5 {
+        margin-bottom: 15px;
+        color: #333;
+        font-weight: 600;
+    }
+    
+    .tool-section {
+        margin-bottom: 20px;
+    }
+    
+    .tool-section label {
+        font-size: 12px;
+        color: #666;
+        text-transform: uppercase;
+        margin-bottom: 8px;
+        display: block;
+    }
+    
+    .table-templates {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 8px;
+    }
+    
+    .table-template {
+        background: #fff;
+        border: 2px solid #ddd;
+        border-radius: 6px;
+        padding: 10px;
+        text-align: center;
+        cursor: grab;
+        transition: all 0.2s;
+    }
+    
+    .table-template:hover {
+        border-color: #4CAF50;
+        transform: scale(1.05);
+    }
+    
+    .table-template.dragging {
+        opacity: 0.5;
+        cursor: grabbing;
+    }
+    
+    .table-template .table-icon {
+        width: 40px;
+        height: 30px;
+        background: #4CAF50;
+        border-radius: 4px;
+        margin: 0 auto 5px;
+    }
+    
+    .table-template .table-icon.circle {
+        border-radius: 50%;
+        width: 35px;
+        height: 35px;
+    }
+    
+    .table-template .table-icon.booth {
+        border-radius: 8px 8px 0 0;
+    }
+    
+    .table-template span {
+        font-size: 11px;
+        color: #666;
+    }
+    
+    /* Center - Canvas */
+    .canvas-container {
+        flex: 1;
+        background: #fff;
+        border-radius: 8px;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
+    }
+    
+    .canvas-toolbar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 10px 15px;
+        background: #f8f9fa;
+        border-bottom: 1px solid #e0e0e0;
+    }
+    
+    .canvas-toolbar .btn-group .btn {
+        padding: 5px 12px;
+        font-size: 13px;
+    }
+    
+    .zoom-controls {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+    }
+    
+    .zoom-controls span {
+        font-size: 13px;
+        color: #666;
+    }
+    
+    .canvas-wrapper {
+        flex: 1;
+        overflow: auto;
+        padding: 20px;
+        background: #e9ecef;
+    }
+    
+    #floor-canvas {
+        display: grid;
+        background: #2c2c2c;
+        border-radius: 4px;
+        position: relative;
+        margin: auto;
+    }
+    
+    .grid-cell {
+        border: 1px solid rgba(255,255,255,0.1);
+        box-sizing: border-box;
+        transition: background-color 0.2s;
+    }
+    
+    .grid-cell.floor {
+        background: #404040;
+    }
+    
+    .grid-cell.empty {
+        background: transparent;
+    }
+    
+    .grid-cell.highlight {
+        background: rgba(76, 175, 80, 0.3) !important;
+    }
+    
+    .grid-cell.invalid {
+        background: rgba(244, 67, 54, 0.3) !important;
+    }
+    
+    /* Tables on canvas */
+    .table-item {
+        position: absolute;
+        background: #4CAF50;
+        border-radius: 6px;
+        cursor: move;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: white;
+        font-weight: bold;
+        font-size: 14px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+        transition: box-shadow 0.2s, transform 0.1s;
+        user-select: none;
+        z-index: 10;
+    }
+    
+    .table-item:hover {
+        box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+    }
+    
+    .table-item.selected {
+        box-shadow: 0 0 0 3px #2196F3, 0 4px 12px rgba(0,0,0,0.4);
+    }
+    
+    .table-item.dragging {
+        opacity: 0.8;
+        transform: scale(1.05);
+        z-index: 100;
+    }
+    
+    .table-item.circle {
+        border-radius: 50%;
+    }
+    
+    .table-item .table-label {
+        text-align: center;
+        line-height: 1.2;
+    }
+    
+    .table-item .table-label .seats {
+        font-size: 10px;
+        opacity: 0.8;
+    }
+    
+    .table-item .delete-btn {
+        position: absolute;
+        top: -8px;
+        right: -8px;
+        width: 20px;
+        height: 20px;
+        background: #f44336;
+        border-radius: 50%;
+        display: none;
+        align-items: center;
+        justify-content: center;
+        font-size: 12px;
+        cursor: pointer;
+    }
+    
+    .table-item.selected .delete-btn {
+        display: flex;
+    }
+    
+    /* Right Panel - Properties */
+    .properties-panel {
+        width: 280px;
+        background: #f8f9fa;
+        border-radius: 8px;
+        padding: 15px;
+        flex-shrink: 0;
+        overflow-y: auto;
+    }
+    
+    .properties-panel h5 {
+        margin-bottom: 15px;
+        color: #333;
+        font-weight: 600;
+    }
+    
+    .property-group {
+        margin-bottom: 15px;
+    }
+    
+    .property-group label {
+        font-size: 12px;
+        color: #666;
+        margin-bottom: 5px;
+        display: block;
+    }
+    
+    .property-group input,
+    .property-group select {
+        width: 100%;
+        padding: 8px 10px;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+        font-size: 14px;
+    }
+    
+    .property-group input:focus,
+    .property-group select:focus {
+        border-color: #4CAF50;
+        outline: none;
+    }
+    
+    .property-row {
+        display: flex;
+        gap: 10px;
+    }
+    
+    .property-row .property-group {
+        flex: 1;
+    }
+    
+    .no-selection {
+        text-align: center;
+        padding: 40px 20px;
+        color: #999;
+    }
+    
+    .no-selection i {
+        font-size: 48px;
+        margin-bottom: 15px;
+        display: block;
+    }
+    
+    /* Upload Section */
+    .upload-section {
+        border: 2px dashed #ddd;
+        border-radius: 8px;
+        padding: 20px;
+        text-align: center;
+        margin-bottom: 20px;
+        transition: all 0.2s;
+    }
+    
+    .upload-section:hover,
+    .upload-section.dragover {
+        border-color: #4CAF50;
+        background: rgba(76, 175, 80, 0.05);
+    }
+    
+    .upload-section i {
+        font-size: 32px;
+        color: #999;
+        margin-bottom: 10px;
+    }
+    
+    .upload-section p {
+        margin: 0;
+        color: #666;
+        font-size: 13px;
+    }
+    
+    .upload-section input[type="file"] {
+        display: none;
+    }
+    
+    /* Floor Plan Stats */
+    .floor-stats {
+        background: #fff;
+        border-radius: 6px;
+        padding: 12px;
+        margin-bottom: 15px;
+    }
+    
+    .floor-stats .stat {
+        display: flex;
+        justify-content: space-between;
+        padding: 5px 0;
+        font-size: 13px;
+    }
+    
+    .floor-stats .stat-label {
+        color: #666;
+    }
+    
+    .floor-stats .stat-value {
+        font-weight: 600;
+        color: #333;
+    }
+    
+    /* Table Type Colors */
+    .table-item.standard { background: #4CAF50; }
+    .table-item.counter { background: #2196F3; }
+    .table-item.high_top { background: #9C27B0; }
+    .table-item.outdoor { background: #FF9800; }
+    .table-item.booth { background: #795548; }
+    .table-item.inactive { background: #9e9e9e; opacity: 0.6; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <h2><i class="fas fa-th me-2"></i>Floor Plan Editor</h2>
+        <p class="text-muted mb-0">{{ restaurant.name }} - Drag and drop tables to design your floor layout</p>
+    </div>
+    <div class="btn-group">
+        <button class="btn btn-outline-secondary" onclick="resetFloorPlan()">
+            <i class="fas fa-undo me-1"></i> Reset
+        </button>
+        <button class="btn btn-primary" onclick="saveFloorPlan()">
+            <i class="fas fa-save me-1"></i> Save Layout
+        </button>
+    </div>
+</div>
+
+<div class="floor-plan-container">
+    <!-- Left Panel - Tools -->
+    <div class="tools-panel">
+        <h5><i class="fas fa-tools me-2"></i>Tools</h5>
+        
+        <!-- Upload Section -->
+        <div class="upload-section" id="upload-zone" onclick="document.getElementById('excel-upload').click()">
+            <i class="fas fa-file-excel"></i>
+            <p>Drop Excel file here<br>or click to upload</p>
+            <input type="file" id="excel-upload" accept=".xlsx,.xls" onchange="handleExcelUpload(this.files[0])">
+        </div>
+        
+        <!-- Table Templates -->
+        <div class="tool-section">
+            <label>Add Tables</label>
+            <div class="table-templates">
+                <div class="table-template" draggable="true" data-shape="rectangle" data-seats="4" data-width="2" data-height="2">
+                    <div class="table-icon"></div>
+                    <span>4 Seats</span>
+                </div>
+                <div class="table-template" draggable="true" data-shape="rectangle" data-seats="6" data-width="3" data-height="2">
+                    <div class="table-icon" style="width: 50px;"></div>
+                    <span>6 Seats</span>
+                </div>
+                <div class="table-template" draggable="true" data-shape="circle" data-seats="4" data-width="2" data-height="2">
+                    <div class="table-icon circle"></div>
+                    <span>Round 4</span>
+                </div>
+                <div class="table-template" draggable="true" data-shape="rectangle" data-seats="8" data-width="4" data-height="2">
+                    <div class="table-icon" style="width: 60px;"></div>
+                    <span>8 Seats</span>
+                </div>
+                <div class="table-template" draggable="true" data-shape="booth" data-seats="4" data-width="2" data-height="3" data-type="booth">
+                    <div class="table-icon booth"></div>
+                    <span>Booth</span>
+                </div>
+                <div class="table-template" draggable="true" data-shape="rectangle" data-seats="2" data-width="1" data-height="2">
+                    <div class="table-icon" style="width: 25px;"></div>
+                    <span>2 Seats</span>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Floor Stats -->
+        <div class="tool-section">
+            <label>Statistics</label>
+            <div class="floor-stats">
+                <div class="stat">
+                    <span class="stat-label">Total Tables</span>
+                    <span class="stat-value" id="stat-tables">0</span>
+                </div>
+                <div class="stat">
+                    <span class="stat-label">Total Seats</span>
+                    <span class="stat-value" id="stat-seats">0</span>
+                </div>
+                <div class="stat">
+                    <span class="stat-label">Active Tables</span>
+                    <span class="stat-value" id="stat-active">0</span>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Center - Canvas -->
+    <div class="canvas-container">
+        <div class="canvas-toolbar">
+            <div class="btn-group">
+                <button class="btn btn-outline-secondary btn-sm" onclick="setTool('select')" id="tool-select">
+                    <i class="fas fa-mouse-pointer"></i> Select
+                </button>
+                <button class="btn btn-outline-secondary btn-sm" onclick="setTool('floor')" id="tool-floor">
+                    <i class="fas fa-square"></i> Draw Floor
+                </button>
+                <button class="btn btn-outline-secondary btn-sm" onclick="setTool('erase')" id="tool-erase">
+                    <i class="fas fa-eraser"></i> Erase
+                </button>
+            </div>
+            <div class="zoom-controls">
+                <button class="btn btn-outline-secondary btn-sm" onclick="zoomOut()">
+                    <i class="fas fa-minus"></i>
+                </button>
+                <span id="zoom-level">100%</span>
+                <button class="btn btn-outline-secondary btn-sm" onclick="zoomIn()">
+                    <i class="fas fa-plus"></i>
+                </button>
+            </div>
+        </div>
+        <div class="canvas-wrapper">
+            <div id="floor-canvas"></div>
+        </div>
+    </div>
+    
+    <!-- Right Panel - Properties -->
+    <div class="properties-panel">
+        <h5><i class="fas fa-sliders-h me-2"></i>Properties</h5>
+        
+        <div id="no-selection" class="no-selection">
+            <i class="fas fa-hand-pointer"></i>
+            <p>Select a table to edit its properties</p>
+        </div>
+        
+        <div id="table-properties" style="display: none;">
+            <div class="property-group">
+                <label>Table ID</label>
+                <input type="text" id="prop-table-id" placeholder="T1">
+            </div>
+            
+            <div class="property-group">
+                <label>Table Name</label>
+                <input type="text" id="prop-table-name" placeholder="Window Table">
+            </div>
+            
+            <div class="property-row">
+                <div class="property-group">
+                    <label>Seats</label>
+                    <input type="number" id="prop-seats" min="1" max="20" value="4">
+                </div>
+                <div class="property-group">
+                    <label>Min Guests</label>
+                    <input type="number" id="prop-min-guests" min="1" max="20" value="1">
+                </div>
+            </div>
+            
+            <div class="property-group">
+                <label>Table Type</label>
+                <select id="prop-table-type">
+                    <option value="standard">Standard</option>
+                    <option value="counter">Counter</option>
+                    <option value="high_top">High Top</option>
+                    <option value="outdoor">Outdoor</option>
+                    <option value="booth">Booth</option>
+                </select>
+            </div>
+            
+            <div class="property-group">
+                <label>Shape</label>
+                <select id="prop-shape">
+                    <option value="rectangle">Rectangle</option>
+                    <option value="circle">Circle</option>
+                    <option value="square">Square</option>
+                </select>
+            </div>
+            
+            <div class="property-row">
+                <div class="property-group">
+                    <label>Width (cells)</label>
+                    <input type="number" id="prop-width" min="1" max="10" value="2">
+                </div>
+                <div class="property-group">
+                    <label>Height (cells)</label>
+                    <input type="number" id="prop-height" min="1" max="10" value="2">
+                </div>
+            </div>
+            
+            <div class="property-group">
+                <label>Notes</label>
+                <textarea id="prop-notes" rows="2" class="form-control" placeholder="Special notes..."></textarea>
+            </div>
+            
+            <div class="property-group">
+                <div class="form-check">
+                    <input type="checkbox" class="form-check-input" id="prop-active" checked>
+                    <label class="form-check-label" for="prop-active">Active (available for booking)</label>
+                </div>
+            </div>
+            
+            <div class="d-grid gap-2 mt-3">
+                <button class="btn btn-danger btn-sm" onclick="deleteSelectedTable()">
+                    <i class="fas fa-trash me-1"></i> Delete Table
+                </button>
+            </div>
+        </div>
+        
+        <!-- Floor Plan Settings -->
+        <hr class="my-4">
+        <h6 class="text-muted mb-3">Floor Plan Settings</h6>
+        
+        <div class="property-group">
+            <label>Floor Plan Name</label>
+            <input type="text" id="floor-plan-name" value="Main Floor">
+        </div>
+        
+        <div class="property-row">
+            <div class="property-group">
+                <label>Grid Rows</label>
+                <input type="number" id="grid-rows" min="10" max="50" value="20" onchange="updateGridSize()">
+            </div>
+            <div class="property-group">
+                <label>Grid Cols</label>
+                <input type="number" id="grid-cols" min="10" max="50" value="20" onchange="updateGridSize()">
+            </div>
+        </div>
+        
+        <div class="property-group">
+            <label>Floor Color</label>
+            <input type="color" id="floor-color" value="#404040" class="form-control form-control-color w-100">
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script>
+// Floor Plan Editor State
+const state = {
+    restaurantId: {{ restaurant.id }},
+    floorPlanId: {{ floor_plan.id if floor_plan else 'null' }},
+    gridRows: {{ floor_plan.grid_rows if floor_plan else 20 }},
+    gridCols: {{ floor_plan.grid_cols if floor_plan else 20 }},
+    cellSize: 40,
+    zoom: 1,
+    currentTool: 'select',
+    selectedTable: null,
+    tables: [],
+    floorCells: new Set(),
+    tableCounter: 1,
+    isDragging: false,
+    isDrawing: false
+};
+
+// Initialize
+document.addEventListener('DOMContentLoaded', function() {
+    initCanvas();
+    initDragAndDrop();
+    initPropertyListeners();
+    loadExistingData();
+    setTool('select');
+});
+
+// Initialize Canvas
+function initCanvas() {
+    const canvas = document.getElementById('floor-canvas');
+    canvas.style.gridTemplateColumns = `repeat(${state.gridCols}, ${state.cellSize}px)`;
+    canvas.style.gridTemplateRows = `repeat(${state.gridRows}, ${state.cellSize}px)`;
+    canvas.style.width = `${state.gridCols * state.cellSize}px`;
+    canvas.style.height = `${state.gridRows * state.cellSize}px`;
+    
+    // Create grid cells
+    canvas.innerHTML = '';
+    for (let row = 0; row < state.gridRows; row++) {
+        for (let col = 0; col < state.gridCols; col++) {
+            const cell = document.createElement('div');
+            cell.className = 'grid-cell empty';
+            cell.dataset.row = row;
+            cell.dataset.col = col;
+            
+            cell.addEventListener('mousedown', (e) => handleCellMouseDown(e, row, col));
+            cell.addEventListener('mouseenter', (e) => handleCellMouseEnter(e, row, col));
+            cell.addEventListener('mouseup', handleCellMouseUp);
+            
+            canvas.appendChild(cell);
+        }
+    }
+    
+    canvas.addEventListener('click', (e) => {
+        if (e.target === canvas || e.target.classList.contains('grid-cell')) {
+            deselectTable();
+        }
+    });
+}
+
+// Handle cell interactions
+function handleCellMouseDown(e, row, col) {
+    if (state.currentTool === 'floor') {
+        state.isDrawing = true;
+        toggleFloorCell(row, col, true);
+    } else if (state.currentTool === 'erase') {
+        state.isDrawing = true;
+        toggleFloorCell(row, col, false);
+    }
+}
+
+function handleCellMouseEnter(e, row, col) {
+    if (!state.isDrawing) return;
+    
+    if (state.currentTool === 'floor') {
+        toggleFloorCell(row, col, true);
+    } else if (state.currentTool === 'erase') {
+        toggleFloorCell(row, col, false);
+    }
+}
+
+function handleCellMouseUp() {
+    state.isDrawing = false;
+}
+
+function toggleFloorCell(row, col, isFloor) {
+    const key = `${row},${col}`;
+    const cell = document.querySelector(`.grid-cell[data-row="${row}"][data-col="${col}"]`);
+    
+    if (isFloor) {
+        state.floorCells.add(key);
+        cell.classList.remove('empty');
+        cell.classList.add('floor');
+        cell.style.backgroundColor = document.getElementById('floor-color').value;
+    } else {
+        state.floorCells.delete(key);
+        cell.classList.remove('floor');
+        cell.classList.add('empty');
+        cell.style.backgroundColor = '';
+    }
+}
+
+// Drag and Drop for Table Templates
+function initDragAndDrop() {
+    const templates = document.querySelectorAll('.table-template');
+    const canvas = document.getElementById('floor-canvas');
+    
+    templates.forEach(template => {
+        template.addEventListener('dragstart', (e) => {
+            e.dataTransfer.setData('text/plain', JSON.stringify({
+                shape: template.dataset.shape,
+                seats: parseInt(template.dataset.seats),
+                width: parseInt(template.dataset.width),
+                height: parseInt(template.dataset.height),
+                type: template.dataset.type || 'standard'
+            }));
+            template.classList.add('dragging');
+        });
+        
+        template.addEventListener('dragend', () => {
+            template.classList.remove('dragging');
+        });
+    });
+    
+    canvas.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        highlightDropZone(e);
+    });
+    
+    canvas.addEventListener('dragleave', () => {
+        clearHighlights();
+    });
+    
+    canvas.addEventListener('drop', (e) => {
+        e.preventDefault();
+        clearHighlights();
+        
+        const data = JSON.parse(e.dataTransfer.getData('text/plain'));
+        const rect = canvas.getBoundingClientRect();
+        const x = Math.floor((e.clientX - rect.left) / state.cellSize / state.zoom);
+        const y = Math.floor((e.clientY - rect.top) / state.cellSize / state.zoom);
+        
+        addTable(x, y, data);
+    });
+    
+    // Excel upload drop zone
+    const uploadZone = document.getElementById('upload-zone');
+    uploadZone.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        uploadZone.classList.add('dragover');
+    });
+    uploadZone.addEventListener('dragleave', () => {
+        uploadZone.classList.remove('dragover');
+    });
+    uploadZone.addEventListener('drop', (e) => {
+        e.preventDefault();
+        uploadZone.classList.remove('dragover');
+        if (e.dataTransfer.files.length) {
+            handleExcelUpload(e.dataTransfer.files[0]);
+        }
+    });
+}
+
+function highlightDropZone(e) {
+    clearHighlights();
+    const canvas = document.getElementById('floor-canvas');
+    const rect = canvas.getBoundingClientRect();
+    const x = Math.floor((e.clientX - rect.left) / state.cellSize / state.zoom);
+    const y = Math.floor((e.clientY - rect.top) / state.cellSize / state.zoom);
+    
+    // Highlight cells where table would be placed
+    for (let row = y; row < y + 2 && row < state.gridRows; row++) {
+        for (let col = x; col < x + 2 && col < state.gridCols; col++) {
+            const cell = document.querySelector(`.grid-cell[data-row="${row}"][data-col="${col}"]`);
+            if (cell) cell.classList.add('highlight');
+        }
+    }
+}
+
+function clearHighlights() {
+    document.querySelectorAll('.grid-cell.highlight, .grid-cell.invalid').forEach(cell => {
+        cell.classList.remove('highlight', 'invalid');
+    });
+}
+
+// Add Table
+function addTable(x, y, data) {
+    const tableId = `T${state.tableCounter++}`;
+    const table = {
+        id: tableId,
+        tableId: tableId,
+        tableName: '',
+        shape: data.shape,
+        seats: data.seats,
+        width: data.width,
+        height: data.height,
+        posX: x,
+        posY: y,
+        tableType: data.type || 'standard',
+        isActive: true,
+        minGuests: 1,
+        notes: ''
+    };
+    
+    state.tables.push(table);
+    renderTable(table);
+    updateStats();
+    selectTable(tableId);
+}
+
+// Render Table on Canvas
+function renderTable(table) {
+    const canvas = document.getElementById('floor-canvas');
+    
+    // Remove existing element if any
+    const existing = document.getElementById(`table-${table.id}`);
+    if (existing) existing.remove();
+    
+    const el = document.createElement('div');
+    el.id = `table-${table.id}`;
+    el.className = `table-item ${table.shape} ${table.tableType}`;
+    if (!table.isActive) el.classList.add('inactive');
+    
+    el.style.left = `${table.posX * state.cellSize}px`;
+    el.style.top = `${table.posY * state.cellSize}px`;
+    el.style.width = `${table.width * state.cellSize - 4}px`;
+    el.style.height = `${table.height * state.cellSize - 4}px`;
+    
+    el.innerHTML = `
+        <div class="table-label">
+            <div>${table.tableId}</div>
+            <div class="seats">${table.seats} seats</div>
+        </div>
+        <div class="delete-btn" onclick="event.stopPropagation(); deleteTable('${table.id}')">
+            <i class="fas fa-times"></i>
+        </div>
+    `;
+    
+    // Make draggable
+    el.addEventListener('mousedown', (e) => startTableDrag(e, table));
+    el.addEventListener('click', (e) => {
+        e.stopPropagation();
+        selectTable(table.id);
+    });
+    
+    canvas.appendChild(el);
+}
+
+// Table Dragging
+function startTableDrag(e, table) {
+    if (state.currentTool !== 'select') return;
+    
+    state.isDragging = true;
+    state.selectedTable = table.id;
+    
+    const el = document.getElementById(`table-${table.id}`);
+    el.classList.add('dragging', 'selected');
+    
+    const canvas = document.getElementById('floor-canvas');
+    const rect = canvas.getBoundingClientRect();
+    const startX = e.clientX;
+    const startY = e.clientY;
+    const origX = table.posX;
+    const origY = table.posY;
+    
+    function onMouseMove(e) {
+        const dx = Math.round((e.clientX - startX) / state.cellSize / state.zoom);
+        const dy = Math.round((e.clientY - startY) / state.cellSize / state.zoom);
+        
+        const newX = Math.max(0, Math.min(state.gridCols - table.width, origX + dx));
+        const newY = Math.max(0, Math.min(state.gridRows - table.height, origY + dy));
+        
+        el.style.left = `${newX * state.cellSize}px`;
+        el.style.top = `${newY * state.cellSize}px`;
+        
+        table.posX = newX;
+        table.posY = newY;
+    }
+    
+    function onMouseUp() {
+        state.isDragging = false;
+        el.classList.remove('dragging');
+        document.removeEventListener('mousemove', onMouseMove);
+        document.removeEventListener('mouseup', onMouseUp);
+    }
+    
+    document.addEventListener('mousemove', onMouseMove);
+    document.addEventListener('mouseup', onMouseUp);
+}
+
+// Select/Deselect Table
+function selectTable(tableId) {
+    deselectTable();
+    
+    state.selectedTable = tableId;
+    const el = document.getElementById(`table-${tableId}`);
+    if (el) el.classList.add('selected');
+    
+    const table = state.tables.find(t => t.id === tableId);
+    if (table) {
+        document.getElementById('no-selection').style.display = 'none';
+        document.getElementById('table-properties').style.display = 'block';
+        
+        document.getElementById('prop-table-id').value = table.tableId;
+        document.getElementById('prop-table-name').value = table.tableName || '';
+        document.getElementById('prop-seats').value = table.seats;
+        document.getElementById('prop-min-guests').value = table.minGuests || 1;
+        document.getElementById('prop-table-type').value = table.tableType;
+        document.getElementById('prop-shape').value = table.shape;
+        document.getElementById('prop-width').value = table.width;
+        document.getElementById('prop-height').value = table.height;
+        document.getElementById('prop-notes').value = table.notes || '';
+        document.getElementById('prop-active').checked = table.isActive;
+    }
+}
+
+function deselectTable() {
+    if (state.selectedTable) {
+        const el = document.getElementById(`table-${state.selectedTable}`);
+        if (el) el.classList.remove('selected');
+    }
+    state.selectedTable = null;
+    document.getElementById('no-selection').style.display = 'block';
+    document.getElementById('table-properties').style.display = 'none';
+}
+
+// Delete Table
+function deleteTable(tableId) {
+    state.tables = state.tables.filter(t => t.id !== tableId);
+    const el = document.getElementById(`table-${tableId}`);
+    if (el) el.remove();
+    deselectTable();
+    updateStats();
+}
+
+function deleteSelectedTable() {
+    if (state.selectedTable) {
+        deleteTable(state.selectedTable);
+    }
+}
+
+// Property Listeners
+function initPropertyListeners() {
+    const props = ['prop-table-id', 'prop-table-name', 'prop-seats', 'prop-min-guests', 
+                   'prop-table-type', 'prop-shape', 'prop-width', 'prop-height', 'prop-notes', 'prop-active'];
+    
+    props.forEach(propId => {
+        const el = document.getElementById(propId);
+        if (el) {
+            el.addEventListener('change', updateSelectedTable);
+            el.addEventListener('input', updateSelectedTable);
+        }
+    });
+}
+
+function updateSelectedTable() {
+    if (!state.selectedTable) return;
+    
+    const table = state.tables.find(t => t.id === state.selectedTable);
+    if (!table) return;
+    
+    table.tableId = document.getElementById('prop-table-id').value;
+    table.tableName = document.getElementById('prop-table-name').value;
+    table.seats = parseInt(document.getElementById('prop-seats').value);
+    table.minGuests = parseInt(document.getElementById('prop-min-guests').value);
+    table.tableType = document.getElementById('prop-table-type').value;
+    table.shape = document.getElementById('prop-shape').value;
+    table.width = parseInt(document.getElementById('prop-width').value);
+    table.height = parseInt(document.getElementById('prop-height').value);
+    table.notes = document.getElementById('prop-notes').value;
+    table.isActive = document.getElementById('prop-active').checked;
+    
+    renderTable(table);
+    selectTable(state.selectedTable);
+    updateStats();
+}
+
+// Tools
+function setTool(tool) {
+    state.currentTool = tool;
+    document.querySelectorAll('.canvas-toolbar .btn').forEach(btn => {
+        btn.classList.remove('active', 'btn-primary');
+        btn.classList.add('btn-outline-secondary');
+    });
+    const btn = document.getElementById(`tool-${tool}`);
+    if (btn) {
+        btn.classList.remove('btn-outline-secondary');
+        btn.classList.add('active', 'btn-primary');
+    }
+}
+
+// Zoom
+function zoomIn() {
+    state.zoom = Math.min(2, state.zoom + 0.1);
+    applyZoom();
+}
+
+function zoomOut() {
+    state.zoom = Math.max(0.5, state.zoom - 0.1);
+    applyZoom();
+}
+
+function applyZoom() {
+    const canvas = document.getElementById('floor-canvas');
+    canvas.style.transform = `scale(${state.zoom})`;
+    canvas.style.transformOrigin = 'top left';
+    document.getElementById('zoom-level').textContent = `${Math.round(state.zoom * 100)}%`;
+}
+
+// Update Grid Size
+function updateGridSize() {
+    state.gridRows = parseInt(document.getElementById('grid-rows').value);
+    state.gridCols = parseInt(document.getElementById('grid-cols').value);
+    initCanvas();
+    
+    // Re-render floor cells
+    state.floorCells.forEach(key => {
+        const [row, col] = key.split(',').map(Number);
+        if (row < state.gridRows && col < state.gridCols) {
+            toggleFloorCell(row, col, true);
+        }
+    });
+    
+    // Re-render tables
+    state.tables.forEach(table => renderTable(table));
+}
+
+// Update Stats
+function updateStats() {
+    document.getElementById('stat-tables').textContent = state.tables.length;
+    document.getElementById('stat-seats').textContent = state.tables.reduce((sum, t) => sum + t.seats, 0);
+    document.getElementById('stat-active').textContent = state.tables.filter(t => t.isActive).length;
+}
+
+// Excel Upload
+function handleExcelUpload(file) {
+    if (!file) return;
+    
+    const reader = new FileReader();
+    reader.onload = function(e) {
+        const data = new Uint8Array(e.target.result);
+        const workbook = XLSX.read(data, { type: 'array' });
+        const sheet = workbook.Sheets[workbook.SheetNames[0]];
+        
+        parseExcelLayout(sheet);
+    };
+    reader.readAsArrayBuffer(file);
+}
+
+function parseExcelLayout(sheet) {
+    // Clear existing
+    state.tables = [];
+    state.floorCells.clear();
+    document.querySelectorAll('.table-item').forEach(el => el.remove());
+    
+    const range = XLSX.utils.decode_range(sheet['!ref']);
+    const startRow = range.s.r;
+    const startCol = range.s.c;
+    
+    // Adjust grid size
+    const rows = range.e.r - range.s.r + 1;
+    const cols = range.e.c - range.s.c + 1;
+    
+    document.getElementById('grid-rows').value = rows;
+    document.getElementById('grid-cols').value = cols;
+    state.gridRows = rows;
+    state.gridCols = cols;
+    initCanvas();
+    
+    // Track cells by theme for grouping
+    const greenCells = [];
+    const darkCells = [];
+    
+    for (let row = range.s.r; row <= range.e.r; row++) {
+        for (let col = range.s.c; col <= range.e.c; col++) {
+            const cellRef = XLSX.utils.encode_cell({ r: row, c: col });
+            const cell = sheet[cellRef];
+            
+            const gridRow = row - startRow;
+            const gridCol = col - startCol;
+            
+            if (cell && cell.s && cell.s.fgColor) {
+                const theme = cell.s.fgColor.theme;
+                
+                if (theme === 9) {
+                    // Green = table
+                    greenCells.push({ row: gridRow, col: gridCol });
+                } else if (theme === 1) {
+                    // Dark = floor
+                    toggleFloorCell(gridRow, gridCol, true);
+                }
+            }
+        }
+    }
+    
+    // Group green cells into tables
+    const tables = findConnectedCells(greenCells);
+    tables.forEach((tableCells, index) => {
+        const minRow = Math.min(...tableCells.map(c => c.row));
+        const maxRow = Math.max(...tableCells.map(c => c.row));
+        const minCol = Math.min(...tableCells.map(c => c.col));
+        const maxCol = Math.max(...tableCells.map(c => c.col));
+        
+        const width = maxCol - minCol + 1;
+        const height = maxRow - minRow + 1;
+        const seats = tableCells.length;
+        
+        addTable(minCol, minRow, {
+            shape: width === height ? 'square' : 'rectangle',
+            seats: seats,
+            width: width,
+            height: height,
+            type: 'standard'
+        });
+    });
+    
+    updateStats();
+}
+
+function findConnectedCells(cells) {
+    if (!cells.length) return [];
+    
+    const cellSet = new Set(cells.map(c => `${c.row},${c.col}`));
+    const groups = [];
+    
+    while (cellSet.size > 0) {
+        const start = cellSet.values().next().value;
+        cellSet.delete(start);
+        
+        const group = [{ row: parseInt(start.split(',')[0]), col: parseInt(start.split(',')[1]) }];
+        const queue = [start];
+        
+        while (queue.length > 0) {
+            const current = queue.shift();
+            const [row, col] = current.split(',').map(Number);
+            
+            const neighbors = [
+                `${row-1},${col}`, `${row+1},${col}`,
+                `${row},${col-1}`, `${row},${col+1}`
+            ];
+            
+            neighbors.forEach(n => {
+                if (cellSet.has(n)) {
+                    cellSet.delete(n);
+                    const [r, c] = n.split(',').map(Number);
+                    group.push({ row: r, col: c });
+                    queue.push(n);
+                }
+            });
+        }
+        
+        groups.push(group);
+    }
+    
+    return groups;
+}
+
+// Save Floor Plan
+function saveFloorPlan() {
+    const data = {
+        name: document.getElementById('floor-plan-name').value,
+        grid_rows: state.gridRows,
+        grid_cols: state.gridCols,
+        cell_size: state.cellSize,
+        floor_color: document.getElementById('floor-color').value,
+        tables: state.tables.map(t => ({
+            table_id: t.tableId,
+            table_name: t.tableName,
+            seats: t.seats,
+            shape: t.shape,
+            width: t.width,
+            height: t.height,
+            pos_x: t.posX,
+            pos_y: t.posY,
+            table_type: t.tableType,
+            is_active: t.isActive,
+            min_guests: t.minGuests,
+            notes: t.notes
+        })),
+        floor_cells: Array.from(state.floorCells).map(key => {
+            const [row, col] = key.split(',').map(Number);
+            return { pos_x: col, pos_y: row, cell_type: 'floor' };
+        })
+    };
+    
+    fetch(`/admin/restaurants/${state.restaurantId}/floor-plan/save`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(data)
+    })
+    .then(response => response.json())
+    .then(result => {
+        if (result.success) {
+            alert('Floor plan saved successfully!');
+            state.floorPlanId = result.floor_plan_id;
+        } else {
+            alert('Error saving floor plan: ' + result.error);
+        }
+    })
+    .catch(error => {
+        alert('Error saving floor plan: ' + error);
+    });
+}
+
+// Load Existing Data
+function loadExistingData() {
+    {% if floor_plan %}
+    // Load floor cells
+    {% for cell in floor_plan.floor_cells %}
+    toggleFloorCell({{ cell.pos_y }}, {{ cell.pos_x }}, true);
+    {% endfor %}
+    
+    // Load tables
+    {% for table in floor_plan.tables %}
+    const table{{ loop.index }} = {
+        id: 'T{{ loop.index }}',
+        tableId: '{{ table.table_id }}',
+        tableName: '{{ table.table_name or "" }}',
+        shape: '{{ table.shape }}',
+        seats: {{ table.seats }},
+        width: {{ table.width }},
+        height: {{ table.height }},
+        posX: {{ table.pos_x }},
+        posY: {{ table.pos_y }},
+        tableType: '{{ table.table_type }}',
+        isActive: {{ 'true' if table.is_active else 'false' }},
+        minGuests: {{ table.min_guests or 1 }},
+        notes: '{{ table.notes or "" }}'
+    };
+    state.tables.push(table{{ loop.index }});
+    renderTable(table{{ loop.index }});
+    state.tableCounter = Math.max(state.tableCounter, {{ loop.index }} + 1);
+    {% endfor %}
+    
+    updateStats();
+    {% endif %}
+}
+
+// Reset Floor Plan
+function resetFloorPlan() {
+    if (!confirm('Are you sure you want to reset the floor plan? All unsaved changes will be lost.')) {
+        return;
+    }
+    
+    state.tables = [];
+    state.floorCells.clear();
+    state.tableCounter = 1;
+    state.selectedTable = null;
+    
+    document.querySelectorAll('.table-item').forEach(el => el.remove());
+    document.querySelectorAll('.grid-cell').forEach(cell => {
+        cell.classList.remove('floor');
+        cell.classList.add('empty');
+        cell.style.backgroundColor = '';
+    });
+    
+    deselectTable();
+    updateStats();
+}
+
+// Keyboard shortcuts
+document.addEventListener('keydown', (e) => {
+    if (e.key === 'Delete' && state.selectedTable) {
+        deleteSelectedTable();
+    } else if (e.key === 'Escape') {
+        deselectTable();
+    }
+});
+</script>
+{% endblock %}
