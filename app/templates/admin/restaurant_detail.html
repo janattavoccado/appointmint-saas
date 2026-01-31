@@ -523,9 +523,9 @@ document.addEventListener('DOMContentLoaded', function() {
             const data = await response.json();
             removeTypingIndicator();
 
-            if (data.transcription) {
+            if (data.text) {
                 // Show the transcribed text
-                addMessage('You said: "' + data.transcription + '"', true);
+                addMessage('You said: "' + data.text + '"', true);
                 
                 // Now send the transcribed text to the AI chat
                 addTypingIndicator();
@@ -535,7 +535,7 @@ document.addEventListener('DOMContentLoaded', function() {
                         'Content-Type': 'application/json',
                     },
                     body: JSON.stringify({
-                        message: data.transcription,
+                        message: data.text,
                         restaurant_id: {{ restaurant.id }}
                     })
                 });
