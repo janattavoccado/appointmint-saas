@@ -372,7 +372,21 @@ document.addEventListener('DOMContentLoaded', function() {
             removeTypingIndicator();
             
             if (data.response) {
-                addMessage(data.response, false);
+                // Parse the response - it may be a JSON string with a 'text' field
+                let displayText = data.response;
+                try {
+                    // If response is a string that looks like JSON, parse it
+                    if (typeof data.response === 'string' && data.response.startsWith('{')) {
+                        const parsed = JSON.parse(data.response);
+                        displayText = parsed.text || data.response;
+                    } else if (typeof data.response === 'object' && data.response.text) {
+                        displayText = data.response.text;
+                    }
+                } catch (e) {
+                    // If parsing fails, use the original response
+                    displayText = data.response;
+                }
+                addMessage(displayText, false);
             } else if (data.error) {
                 addMessage('Error: ' + data.error, false);
             }
