@@ -311,8 +311,9 @@
 </div>
 
 <!-- WhatsApp Floating Button -->
-{% if restaurant.whatsapp_number or restaurant.phone %}
-<a href="https://wa.me/{{ (restaurant.whatsapp_number or restaurant.phone)|replace('+', '')|replace(' ', '')|replace('-', '') }}?text=Hi%2C%20I%20would%20like%20to%20make%20a%20reservation%20at%20{{ restaurant.name|urlencode }}" 
+{% set whatsapp_phone = (restaurant.whatsapp_number or restaurant.phone or '')|replace('+', '')|replace(' ', '')|replace('-', '')|replace('(', '')|replace(')', '') %}
+{% if whatsapp_phone and whatsapp_phone|length > 5 and whatsapp_phone != 'Tbd' %}
+<a href="https://wa.me/{{ whatsapp_phone }}?text=Hi, I would like to make a reservation at {{ restaurant.name }}" 
    target="_blank" 
    class="whatsapp-float" 
    title="Chat on WhatsApp">
