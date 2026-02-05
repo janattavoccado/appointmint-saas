@@ -10,7 +10,7 @@
         height: calc(100vh - 200px);
         min-height: 600px;
     }
-    
+
     /* Status Legend Panel */
     .legend-panel {
         width: 220px;
@@ -19,7 +19,7 @@
         padding: 15px;
         flex-shrink: 0;
     }
-    
+
     .legend-panel h5 {
         margin-bottom: 15px;
         color: #333;
@@ -27,7 +27,7 @@
         border-bottom: 2px solid #ddd;
         padding-bottom: 10px;
     }
-    
+
     .legend-item {
         display: flex;
         align-items: center;
@@ -38,23 +38,23 @@
         cursor: pointer;
         transition: background 0.2s;
     }
-    
+
     .legend-item:hover {
         background: rgba(0,0,0,0.05);
     }
-    
+
     .legend-color {
         width: 24px;
         height: 24px;
         border-radius: 4px;
         flex-shrink: 0;
     }
-    
+
     .legend-text {
         font-size: 13px;
         color: #333;
     }
-    
+
     .legend-count {
         margin-left: auto;
         background: #fff;
@@ -64,14 +64,14 @@
         font-weight: 600;
         color: #666;
     }
-    
+
     /* Status Colors */
     .status-free { background-color: #4CAF50; }
     .status-reserved { background-color: #f44336; }
     .status-reserved_spare { background-color: #FF9800; }
     .status-seated { background-color: #9C27B0; }
     .status-completed { background-color: #FFEB3B; }
-    
+
     /* Canvas Container */
     .canvas-container {
         flex: 1;
@@ -82,7 +82,7 @@
         display: flex;
         flex-direction: column;
     }
-    
+
     .canvas-toolbar {
         background: #f8f9fa;
         padding: 10px 15px;
@@ -91,29 +91,29 @@
         align-items: center;
         gap: 15px;
     }
-    
+
     .canvas-toolbar h4 {
         margin: 0;
         color: #333;
     }
-    
+
     .canvas-toolbar .btn-group {
         margin-left: auto;
     }
-    
+
     .canvas-wrapper {
         flex: 1;
         overflow: auto;
         padding: 20px;
         background: #e8e8e8;
     }
-    
+
     #floorPlanCanvas {
         background: #1a1a1a;
         border-radius: 8px;
         cursor: default;
     }
-    
+
     /* Details Panel */
     .details-panel {
         width: 300px;
@@ -124,7 +124,7 @@
         display: flex;
         flex-direction: column;
     }
-    
+
     .details-panel h5 {
         margin-bottom: 15px;
         color: #333;
@@ -132,28 +132,28 @@
         border-bottom: 2px solid #ddd;
         padding-bottom: 10px;
     }
-    
+
     .table-details {
         flex: 1;
     }
-    
+
     .detail-row {
         display: flex;
         justify-content: space-between;
         padding: 8px 0;
         border-bottom: 1px solid #e0e0e0;
     }
-    
+
     .detail-label {
         color: #666;
         font-size: 13px;
     }
-    
+
     .detail-value {
         font-weight: 500;
         color: #333;
     }
-    
+
     .status-badge {
         padding: 4px 12px;
         border-radius: 12px;
@@ -162,32 +162,32 @@
         color: #fff;
         text-transform: uppercase;
     }
-    
+
     .status-badge.free { background: #4CAF50; }
     .status-badge.reserved { background: #f44336; }
     .status-badge.reserved_spare { background: #FF9800; }
     .status-badge.seated { background: #9C27B0; }
     .status-badge.completed { background: #FFEB3B; color: #333; }
-    
+
     /* Status Actions */
     .status-actions {
         margin-top: 20px;
         padding-top: 15px;
         border-top: 2px solid #ddd;
     }
-    
+
     .status-actions h6 {
         margin-bottom: 10px;
         color: #333;
         font-weight: 600;
     }
-    
+
     .status-btn-grid {
         display: grid;
         grid-template-columns: 1fr 1fr;
         gap: 8px;
     }
-    
+
     .status-btn {
         padding: 10px;
         border: none;
@@ -198,24 +198,24 @@
         transition: all 0.2s;
         color: #fff;
     }
-    
+
     .status-btn:hover {
         transform: scale(1.02);
         box-shadow: 0 2px 8px rgba(0,0,0,0.2);
     }
-    
+
     .status-btn.free { background: #4CAF50; }
     .status-btn.reserved { background: #f44336; }
     .status-btn.reserved_spare { background: #FF9800; }
     .status-btn.seated { background: #9C27B0; }
     .status-btn.completed { background: #FFEB3B; color: #333; }
-    
+
     .status-btn:disabled {
         opacity: 0.5;
         cursor: not-allowed;
         transform: none;
     }
-    
+
     /* Guest Info Form */
     .guest-info-form {
         margin-top: 15px;
@@ -224,22 +224,22 @@
         border-radius: 8px;
         display: none;
     }
-    
+
     .guest-info-form.show {
         display: block;
     }
-    
+
     .guest-info-form .form-group {
         margin-bottom: 12px;
     }
-    
+
     .guest-info-form label {
         font-size: 12px;
         color: #666;
         margin-bottom: 4px;
         display: block;
     }
-    
+
     .guest-info-form input,
     .guest-info-form textarea,
     .guest-info-form select {
@@ -249,38 +249,38 @@
         border-radius: 4px;
         font-size: 13px;
     }
-    
+
     .guest-info-form textarea {
         resize: vertical;
         min-height: 60px;
     }
-    
+
     /* No Selection State */
     .no-selection {
         text-align: center;
         color: #999;
         padding: 40px 20px;
     }
-    
+
     .no-selection i {
         font-size: 48px;
         margin-bottom: 15px;
         display: block;
     }
-    
-    /* Upcoming Reservations */
+
+    /* Upcoming future Reservations */
     .upcoming-reservations {
         margin-top: auto;
         padding-top: 15px;
         border-top: 2px solid #ddd;
     }
-    
+
     .upcoming-reservations h6 {
         margin-bottom: 10px;
         color: #333;
         font-weight: 600;
     }
-    
+
     .reservation-item {
         background: #fff;
         padding: 10px;
@@ -288,22 +288,22 @@
         margin-bottom: 8px;
         border-left: 3px solid #2196F3;
     }
-    
+
     .reservation-item .time {
         font-weight: 600;
         color: #2196F3;
     }
-    
+
     .reservation-item .guest {
         font-size: 13px;
         color: #333;
     }
-    
+
     .reservation-item .party {
         font-size: 12px;
         color: #666;
     }
-    
+
     /* Auto-refresh indicator */
     .refresh-indicator {
         display: flex;
@@ -312,7 +312,7 @@
         font-size: 12px;
         color: #666;
     }
-    
+
     .refresh-indicator .dot {
         width: 8px;
         height: 8px;
@@ -320,12 +320,12 @@
         background: #4CAF50;
         animation: pulse 2s infinite;
     }
-    
+
     @keyframes pulse {
         0%, 100% { opacity: 1; }
         50% { opacity: 0.5; }
     }
-    
+
     /* Table hover effect on canvas */
     .table-hover-info {
         position: absolute;
@@ -361,55 +361,55 @@
     <!-- Left Panel - Legend -->
     <div class="legend-panel">
         <h5><i class="fas fa-palette me-2"></i>Status Legend</h5>
-        
+
         <div class="legend-item" data-filter="all">
             <div class="legend-color" style="background: linear-gradient(135deg, #4CAF50, #f44336, #9C27B0);"></div>
             <span class="legend-text">All Tables</span>
             <span class="legend-count" id="count-all">0</span>
         </div>
-        
+
         <div class="legend-item" data-filter="free">
             <div class="legend-color status-free"></div>
             <span class="legend-text">Free</span>
             <span class="legend-count" id="count-free">0</span>
         </div>
-        
+
         <div class="legend-item" data-filter="reserved">
             <div class="legend-color status-reserved"></div>
             <span class="legend-text">Reserved</span>
             <span class="legend-count" id="count-reserved">0</span>
         </div>
-        
+
         <div class="legend-item" data-filter="reserved_spare">
             <div class="legend-color status-reserved_spare"></div>
             <span class="legend-text">Reserved (Spare)</span>
             <span class="legend-count" id="count-reserved_spare">0</span>
         </div>
-        
+
         <div class="legend-item" data-filter="seated">
             <div class="legend-color status-seated"></div>
             <span class="legend-text">Seated</span>
             <span class="legend-count" id="count-seated">0</span>
         </div>
-        
+
         <div class="legend-item" data-filter="completed">
             <div class="legend-color status-completed"></div>
             <span class="legend-text">Needs Cleaning</span>
             <span class="legend-count" id="count-completed">0</span>
         </div>
-        
+
         <hr>
-        
+
         <div class="refresh-indicator">
             <span class="dot"></span>
             <span>Auto-refresh: <span id="refresh-countdown">30</span>s</span>
         </div>
-        
+
         <button class="btn btn-sm btn-outline-primary w-100 mt-2" onclick="loadFloorPlan()">
             <i class="fas fa-sync-alt me-1"></i> Refresh Now
         </button>
     </div>
-    
+
     <!-- Center - Canvas -->
     <div class="canvas-container">
         <div class="canvas-toolbar">
@@ -434,16 +434,16 @@
             <canvas id="floorPlanCanvas"></canvas>
         </div>
     </div>
-    
+
     <!-- Right Panel - Details -->
     <div class="details-panel">
         <h5><i class="fas fa-info-circle me-2"></i>Table Details</h5>
-        
+
         <div id="noSelection" class="no-selection">
             <i class="fas fa-hand-pointer"></i>
             <p>Click on a table to view details and change status</p>
         </div>
-        
+
         <div id="tableDetails" class="table-details" style="display: none;">
             <div class="detail-row">
                 <span class="detail-label">Table</span>
@@ -477,7 +477,7 @@
                 <span class="detail-label">Notes</span>
                 <span class="detail-value" id="detail-notes">-</span>
             </div>
-            
+
             <!-- Status Actions -->
             <div class="status-actions">
                 <h6>Change Status</h6>
@@ -499,7 +499,7 @@
                     </button>
                 </div>
             </div>
-            
+
             <!-- Guest Info Form -->
             <div class="guest-info-form" id="guestInfoForm">
                 <div class="form-group">
@@ -530,7 +530,7 @@
                 </div>
             </div>
         </div>
-        
+
         <!-- Upcoming Reservations for Selected Table -->
         <div class="upcoming-reservations" id="upcomingReservations" style="display: none;">
             <h6><i class="fas fa-clock me-2"></i>Today's Reservations</h6>
@@ -550,7 +550,7 @@
     // Configuration
     const restaurantId = {{ restaurant.id }};
     const REFRESH_INTERVAL = 30; // seconds
-    
+
     // Status colors
     const STATUS_COLORS = {
         'free': '#4CAF50',
@@ -559,7 +559,7 @@
         'seated': '#9C27B0',
         'completed': '#FFEB3B'
     };
-    
+
     const STATUS_LABELS = {
         'free': 'Free',
         'reserved': 'Reserved',
@@ -567,7 +567,7 @@
         'seated': 'Seated',
         'completed': 'Needs Cleaning'
     };
-    
+
     // State
     let canvas, ctx;
     let floorPlanData = null;
@@ -577,59 +577,59 @@
     let refreshCountdown = REFRESH_INTERVAL;
     let refreshTimer = null;
     let todayReservations = [];
-    
+
     // Initialize
     document.addEventListener('DOMContentLoaded', function() {
         canvas = document.getElementById('floorPlanCanvas');
         ctx = canvas.getContext('2d');
-        
+
         // Add event listeners
         canvas.addEventListener('click', handleCanvasClick);
         canvas.addEventListener('mousemove', handleCanvasHover);
         canvas.addEventListener('mouseleave', hideHoverInfo);
-        
+
         // Load floor plan
         loadFloorPlan();
-        
+
         // Start auto-refresh
         startAutoRefresh();
-        
+
         // Load today's reservations
         loadTodayReservations();
     });
-    
+
     // Auto-refresh
     function startAutoRefresh() {
         refreshCountdown = REFRESH_INTERVAL;
         updateCountdownDisplay();
-        
+
         refreshTimer = setInterval(() => {
             refreshCountdown--;
             updateCountdownDisplay();
-            
+
             if (refreshCountdown <= 0) {
                 loadFloorPlan();
                 refreshCountdown = REFRESH_INTERVAL;
             }
         }, 1000);
     }
-    
+
     function updateCountdownDisplay() {
         document.getElementById('refresh-countdown').textContent = refreshCountdown;
     }
-    
+
     // Load floor plan data
     async function loadFloorPlan() {
         try {
             const response = await fetch(`/admin/restaurants/${restaurantId}/floor-plan/load`);
             const data = await response.json();
-            
+
             if (data.success && data.floor_plan) {
                 floorPlanData = data.floor_plan;
                 document.getElementById('floorPlanName').textContent = floorPlanData.name || 'Floor Plan';
                 renderFloorPlan();
                 updateStatusCounts();
-                
+
                 // Update selected table if still exists
                 if (selectedTable) {
                     const updatedTable = floorPlanData.tables.find(t => t.id === selectedTable.id);
@@ -646,7 +646,7 @@
             showNoFloorPlan();
         }
     }
-    
+
     function showNoFloorPlan() {
         document.getElementById('floorPlanName').textContent = 'No Floor Plan';
         ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -657,22 +657,22 @@
         ctx.textAlign = 'center';
         ctx.fillText('No floor plan configured. Click "Edit Layout" to create one.', canvas.width/2, canvas.height/2);
     }
-    
+
     // Render floor plan
     function renderFloorPlan() {
         if (!floorPlanData) return;
-        
+
         const cellSize = (floorPlanData.cell_size || 40) * zoomLevel;
         const rows = floorPlanData.grid_rows || 20;
         const cols = floorPlanData.grid_cols || 20;
-        
+
         canvas.width = cols * cellSize;
         canvas.height = rows * cellSize;
-        
+
         // Clear canvas
         ctx.fillStyle = '#1a1a1a';
         ctx.fillRect(0, 0, canvas.width, canvas.height);
-        
+
         // Draw floor cells
         const floorColor = floorPlanData.floor_color || '#404040';
         if (floorPlanData.floor_cells) {
@@ -681,7 +681,7 @@
                 ctx.fillRect(cell.pos_x * cellSize, cell.pos_y * cellSize, cellSize, cellSize);
             });
         }
-        
+
         // Draw tables with status colors
         if (floorPlanData.tables) {
             floorPlanData.tables.forEach(table => {
@@ -689,33 +689,33 @@
             });
         }
     }
-    
+
     function drawTable(table, cellSize) {
         const x = table.pos_x * cellSize;
         const y = table.pos_y * cellSize;
         const width = table.width * cellSize;
         const height = table.height * cellSize;
-        
+
         // Get status color
         const status = table.current_status || 'free';
         const baseColor = STATUS_COLORS[status] || STATUS_COLORS.free;
-        
+
         // Highlight selected table
         const isSelected = selectedTable && selectedTable.id === table.id;
-        
+
         ctx.save();
-        
+
         // Draw shadow for selected
         if (isSelected) {
             ctx.shadowColor = 'rgba(255,255,255,0.5)';
             ctx.shadowBlur = 15;
         }
-        
+
         // Draw table shape
         ctx.fillStyle = baseColor;
         ctx.strokeStyle = isSelected ? '#fff' : 'rgba(0,0,0,0.3)';
         ctx.lineWidth = isSelected ? 3 : 1;
-        
+
         if (table.shape === 'circle') {
             const radius = Math.min(width, height) / 2 - 4;
             ctx.beginPath();
@@ -728,31 +728,31 @@
             ctx.fill();
             ctx.stroke();
         }
-        
+
         ctx.restore();
-        
+
         // Draw table ID
         ctx.fillStyle = status === 'completed' ? '#333' : '#fff';
         ctx.font = `bold ${12 * zoomLevel}px Arial`;
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
         ctx.fillText(table.table_id, x + width/2, y + height/2 - 6 * zoomLevel);
-        
+
         // Draw seats count
         ctx.font = `${10 * zoomLevel}px Arial`;
         ctx.fillText(`${table.seats} seats`, x + width/2, y + height/2 + 8 * zoomLevel);
-        
+
         // Draw guest name if seated or reserved
         if ((status === 'seated' || status === 'reserved') && table.current_guest_name) {
             ctx.font = `${9 * zoomLevel}px Arial`;
             ctx.fillStyle = 'rgba(255,255,255,0.8)';
-            const name = table.current_guest_name.length > 10 
-                ? table.current_guest_name.substring(0, 10) + '...' 
+            const name = table.current_guest_name.length > 10
+                ? table.current_guest_name.substring(0, 10) + '...'
                 : table.current_guest_name;
             ctx.fillText(name, x + width/2, y + height/2 + 20 * zoomLevel);
         }
     }
-    
+
     function roundRect(ctx, x, y, width, height, radius) {
         ctx.beginPath();
         ctx.moveTo(x + radius, y);
@@ -766,16 +766,16 @@
         ctx.quadraticCurveTo(x, y, x + radius, y);
         ctx.closePath();
     }
-    
+
     // Handle canvas click
     function handleCanvasClick(e) {
         if (!floorPlanData || !floorPlanData.tables) return;
-        
+
         const rect = canvas.getBoundingClientRect();
         const x = e.clientX - rect.left;
         const y = e.clientY - rect.top;
         const cellSize = (floorPlanData.cell_size || 40) * zoomLevel;
-        
+
         // Find clicked table
         const clickedTable = floorPlanData.tables.find(table => {
             const tx = table.pos_x * cellSize;
@@ -784,7 +784,7 @@
             const th = table.height * cellSize;
             return x >= tx && x <= tx + tw && y >= ty && y <= ty + th;
         });
-        
+
         if (clickedTable) {
             selectedTable = clickedTable;
             showTableDetails(clickedTable);
@@ -795,16 +795,16 @@
             renderFloorPlan();
         }
     }
-    
+
     // Handle canvas hover
     function handleCanvasHover(e) {
         if (!floorPlanData || !floorPlanData.tables) return;
-        
+
         const rect = canvas.getBoundingClientRect();
         const x = e.clientX - rect.left;
         const y = e.clientY - rect.top;
         const cellSize = (floorPlanData.cell_size || 40) * zoomLevel;
-        
+
         const hoveredTable = floorPlanData.tables.find(table => {
             const tx = table.pos_x * cellSize;
             const ty = table.pos_y * cellSize;
@@ -812,7 +812,7 @@
             const th = table.height * cellSize;
             return x >= tx && x <= tx + tw && y >= ty && y <= ty + th;
         });
-        
+
         if (hoveredTable) {
             canvas.style.cursor = 'pointer';
             showHoverInfo(hoveredTable, e.clientX, e.clientY);
@@ -821,11 +821,11 @@
             hideHoverInfo();
         }
     }
-    
+
     function showHoverInfo(table, x, y) {
         const info = document.getElementById('tableHoverInfo');
         const status = table.current_status || 'free';
-        
+
         let html = `<strong>${table.table_id}</strong> - ${STATUS_LABELS[status]}`;
         if (table.current_guest_name) {
             html += `<br>Guest: ${table.current_guest_name}`;
@@ -833,40 +833,40 @@
         if (table.current_guest_count) {
             html += `<br>Party: ${table.current_guest_count}`;
         }
-        
+
         info.innerHTML = html;
         info.style.left = (x + 15) + 'px';
         info.style.top = (y + 15) + 'px';
         info.style.display = 'block';
     }
-    
+
     function hideHoverInfo() {
         document.getElementById('tableHoverInfo').style.display = 'none';
     }
-    
+
     // Show table details
     function showTableDetails(table) {
         document.getElementById('noSelection').style.display = 'none';
         document.getElementById('tableDetails').style.display = 'block';
         document.getElementById('upcomingReservations').style.display = 'block';
-        
+
         const status = table.current_status || 'free';
-        
+
         document.getElementById('detail-table-id').textContent = table.table_id;
         document.getElementById('detail-table-name').textContent = table.table_name || '-';
         document.getElementById('detail-seats').textContent = table.seats + ' seats';
         document.getElementById('detail-type').textContent = table.table_type || 'Standard';
-        
+
         const statusBadge = document.getElementById('detail-status');
         statusBadge.textContent = STATUS_LABELS[status];
         statusBadge.className = 'status-badge ' + status;
-        
+
         // Show/hide guest info
         const showGuest = ['reserved', 'reserved_spare', 'seated'].includes(status);
         document.getElementById('detail-guest-row').style.display = showGuest ? 'flex' : 'none';
         document.getElementById('detail-party-row').style.display = showGuest ? 'flex' : 'none';
         document.getElementById('detail-notes-row').style.display = table.status_notes ? 'flex' : 'none';
-        
+
         if (showGuest) {
             document.getElementById('detail-guest-name').textContent = table.current_guest_name || '-';
             document.getElementById('detail-guest-count').textContent = table.current_guest_count || '-';
@@ -874,44 +874,44 @@
         if (table.status_notes) {
             document.getElementById('detail-notes').textContent = table.status_notes;
         }
-        
+
         // Load reservations for this table
         loadTableReservations(table.table_id);
-        
+
         // Hide guest form
         hideGuestForm();
     }
-    
+
     function hideTableDetails() {
         document.getElementById('noSelection').style.display = 'block';
         document.getElementById('tableDetails').style.display = 'none';
         document.getElementById('upcomingReservations').style.display = 'none';
     }
-    
+
     // Status change functions
     function showGuestForm(status) {
         pendingStatus = status;
         document.getElementById('guestInfoForm').classList.add('show');
-        
+
         // Pre-fill if table has existing data
         if (selectedTable) {
             document.getElementById('input-guest-name').value = selectedTable.current_guest_name || '';
             document.getElementById('input-guest-count').value = selectedTable.current_guest_count || selectedTable.seats;
             document.getElementById('input-notes').value = selectedTable.status_notes || '';
         }
-        
+
         // Populate reservation dropdown
         populateReservationDropdown();
     }
-    
+
     function hideGuestForm() {
         document.getElementById('guestInfoForm').classList.remove('show');
         pendingStatus = null;
     }
-    
+
     async function setTableStatus(status) {
         if (!selectedTable) return;
-        
+
         const data = {
             status: status,
             guest_name: null,
@@ -919,13 +919,13 @@
             reservation_id: null,
             notes: null
         };
-        
+
         await updateTableStatus(data);
     }
-    
+
     async function confirmStatusChange() {
         if (!selectedTable || !pendingStatus) return;
-        
+
         const data = {
             status: pendingStatus,
             guest_name: document.getElementById('input-guest-name').value || null,
@@ -933,11 +933,11 @@
             reservation_id: document.getElementById('input-reservation').value || null,
             notes: document.getElementById('input-notes').value || null
         };
-        
+
         await updateTableStatus(data);
         hideGuestForm();
     }
-    
+
     async function updateTableStatus(data) {
         try {
             const response = await fetch(`/api/floor-plan/table/${selectedTable.id}/status`, {
@@ -947,9 +947,9 @@
                 },
                 body: JSON.stringify(data)
             });
-            
+
             const result = await response.json();
-            
+
             if (result.success) {
                 // Reload floor plan to get updated data
                 await loadFloorPlan();
@@ -961,11 +961,11 @@
             alert('Error updating table status');
         }
     }
-    
+
     // Update status counts
     function updateStatusCounts() {
         if (!floorPlanData || !floorPlanData.tables) return;
-        
+
         const counts = {
             all: floorPlanData.tables.length,
             free: 0,
@@ -974,27 +974,27 @@
             seated: 0,
             completed: 0
         };
-        
+
         floorPlanData.tables.forEach(table => {
             const status = table.current_status || 'free';
             if (counts.hasOwnProperty(status)) {
                 counts[status]++;
             }
         });
-        
+
         Object.keys(counts).forEach(key => {
             const el = document.getElementById('count-' + key);
             if (el) el.textContent = counts[key];
         });
     }
-    
+
     // Load today's reservations
     async function loadTodayReservations() {
         try {
             const today = new Date().toISOString().split('T')[0];
             const response = await fetch(`/api/restaurants/${restaurantId}/reservations?date=${today}`);
             const data = await response.json();
-            
+
             if (data.reservations) {
                 todayReservations = data.reservations;
             }
@@ -1002,21 +1002,21 @@
             console.error('Error loading reservations:', error);
         }
     }
-    
+
     // Load reservations for specific table
     function loadTableReservations(tableId) {
         const list = document.getElementById('reservationsList');
-        
+
         // Filter reservations for this table (if table_id matches)
-        const tableReservations = todayReservations.filter(r => 
+        const tableReservations = todayReservations.filter(r =>
             r.table_id === tableId || !r.table_id // Show unassigned too
         ).slice(0, 5);
-        
+
         if (tableReservations.length === 0) {
             list.innerHTML = '<p class="text-muted small">No reservations today</p>';
             return;
         }
-        
+
         list.innerHTML = tableReservations.map(r => `
             <div class="reservation-item">
                 <div class="time">${r.reservation_time}</div>
@@ -1025,12 +1025,12 @@
             </div>
         `).join('');
     }
-    
+
     // Populate reservation dropdown
     function populateReservationDropdown() {
         const select = document.getElementById('input-reservation');
         select.innerHTML = '<option value="">-- No reservation --</option>';
-        
+
         todayReservations.forEach(r => {
             const option = document.createElement('option');
             option.value = r.id;
@@ -1038,18 +1038,18 @@
             select.appendChild(option);
         });
     }
-    
+
     // Zoom functions
     function zoomIn() {
         zoomLevel = Math.min(zoomLevel + 0.2, 2);
         renderFloorPlan();
     }
-    
+
     function zoomOut() {
         zoomLevel = Math.max(zoomLevel - 0.2, 0.5);
         renderFloorPlan();
     }
-    
+
     function resetZoom() {
         zoomLevel = 1;
         renderFloorPlan();
