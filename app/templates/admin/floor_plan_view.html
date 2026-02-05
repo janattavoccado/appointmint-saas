@@ -621,7 +621,7 @@
     // Load floor plan data
     async function loadFloorPlan() {
         try {
-            const response = await fetch(`/admin/restaurants/${restaurantId}/floor-plan/load`);
+            const response = await fetch(`/admin/restaurants/${restaurantId}/floor-plan/data`);
             const data = await response.json();
 
             if (data.success && data.floor_plan) {
