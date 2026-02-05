@@ -98,6 +98,12 @@
                 <div class="card-body">
                     <div class="row g-3">
                         <div class="col-md-4">
+                            <a href="{{ url_for('admin.floor_plan_view', restaurant_id=restaurant.id) }}" class="btn btn-primary w-100 py-3">
+                                <i class="fas fa-map fa-2x d-block mb-2"></i>
+                                Floor Plan View
+                            </a>
+                        </div>
+                        <div class="col-md-4">
                             <a href="{{ url_for('admin.floor_plan_editor', restaurant_id=restaurant.id) }}" class="btn btn-outline-primary w-100 py-3">
                                 <i class="fas fa-th fa-2x d-block mb-2"></i>
                                 Floor Plan Editor

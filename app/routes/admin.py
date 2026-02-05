@@ -1111,6 +1111,20 @@ def floor_plan_editor(restaurant_id):
                          floor_plan=floor_plan)
 
 
+@admin_bp.route('/restaurants/<int:restaurant_id>/floor-plan/view')
+@login_required
+@tenant_access_required
+def floor_plan_view(restaurant_id):
+    """Display the interactive floor plan view for staff to manage table status"""
+    restaurant = Restaurant.query.get_or_404(restaurant_id)
+    
+    if not can_access_restaurant(restaurant):
+        flash('Access denied.', 'error')
+        return redirect(url_for('admin.restaurants'))
+    
+    return render_template('admin/floor_plan_view.html', restaurant=restaurant)
+
+
 @admin_bp.route('/restaurants/<int:restaurant_id>/floor-plan/save', methods=['POST'])
 @login_required
 @tenant_superuser_required

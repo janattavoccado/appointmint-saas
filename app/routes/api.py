@@ -4,7 +4,7 @@ Includes AI-powered reservation assistant using OpenAI Agents SDK
 """
 
 from flask import Blueprint, request, jsonify, current_app, Response
-from app.models import db, Restaurant, Table, Reservation, AIConversation
+from app.models import db, Restaurant, Table, Reservation, AIConversation, TableConfig, FloorPlan
 from datetime import datetime, date
 import os
 import json
@@ -184,6 +184,163 @@ def cancel_reservation(id):
 
 
 # =============================================================================
+# FLOOR PLAN TABLE STATUS ENDPOINTS
+# =============================================================================
+
+@api_bp.route('/floor-plan/table/<int:table_config_id>/status', methods=['POST'])
+def update_table_status(table_config_id):
+    """
+    Update the real-time status of a table in the floor plan.
+    
+    Request body:
+    {
+        "status": "free|reserved|reserved_spare|seated|completed",
+        "guest_name": "John Doe",  // optional
+        "guest_count": 4,  // optional
+        "reservation_id": 123,  // optional
+        "notes": "Special occasion"  // optional
+    }
+    """
+    table_config = TableConfig.query.get_or_404(table_config_id)
+    data = request.get_json()
+    
+    # Validate status
+    valid_statuses = ['free', 'reserved', 'reserved_spare', 'seated', 'completed']
+    new_status = data.get('status', 'free')
+    
+    if new_status not in valid_statuses:
+        return jsonify({'error': f'Invalid status. Must be one of: {valid_statuses}'}), 400
+    
+    # Update table status
+    table_config.current_status = new_status
+    table_config.status_updated_at = datetime.utcnow()
+    
+    # Handle status-specific data
+    if new_status == 'free':
+        # Clear all guest info when table is freed
+        table_config.current_guest_name = None
+        table_config.current_guest_count = None
+        table_config.current_reservation_id = None
+        table_config.status_notes = None
+    elif new_status == 'completed':
+        # Keep guest info but mark as completed (needs cleaning)
+        table_config.status_notes = data.get('notes') or 'Needs cleaning'
+    else:
+        # For reserved, reserved_spare, seated - update guest info
+        table_config.current_guest_name = data.get('guest_name')
+        table_config.current_guest_count = data.get('guest_count')
+        table_config.status_notes = data.get('notes')
+        
+        # Link to reservation if provided
+        reservation_id = data.get('reservation_id')
+        if reservation_id:
+            reservation = Reservation.query.get(reservation_id)
+            if reservation:
+                table_config.current_reservation_id = reservation_id
+                # Auto-fill guest info from reservation if not provided
+                if not table_config.current_guest_name:
+                    table_config.current_guest_name = reservation.customer_name
+                if not table_config.current_guest_count:
+                    table_config.current_guest_count = reservation.party_size
+    
+    try:
+        db.session.commit()
+        return jsonify({
+            'success': True,
+            'table': table_config.to_dict()
+        })
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
+
+@api_bp.route('/floor-plan/table/<int:table_config_id>/status', methods=['GET'])
+def get_table_status(table_config_id):
+    """Get the current status of a table"""
+    table_config = TableConfig.query.get_or_404(table_config_id)
+    return jsonify({
+        'success': True,
+        'table': table_config.to_dict()
+    })
+
+
+@api_bp.route('/restaurants/<int:restaurant_id>/reservations', methods=['GET'])
+def get_restaurant_reservations(restaurant_id):
+    """
+    Get reservations for a restaurant, optionally filtered by date.
+    
+    Query params:
+    - date: YYYY-MM-DD format (optional, defaults to today)
+    - status: filter by status (optional)
+    """
+    restaurant = Restaurant.query.get_or_404(restaurant_id)
+    
+    # Get date filter
+    date_str = request.args.get('date')
+    if date_str:
+        try:
+            filter_date = datetime.strptime(date_str, '%Y-%m-%d').date()
+        except ValueError:
+            return jsonify({'error': 'Invalid date format. Use YYYY-MM-DD'}), 400
+    else:
+        filter_date = date.today()
+    
+    # Build query
+    query = Reservation.query.filter(
+        Reservation.restaurant_id == restaurant_id,
+        Reservation.reservation_date == filter_date
+    )
+    
+    # Filter by status if provided
+    status_filter = request.args.get('status')
+    if status_filter:
+        query = query.filter(Reservation.status == status_filter)
+    
+    # Order by time
+    reservations = query.order_by(Reservation.reservation_time).all()
+    
+    return jsonify({
+        'success': True,
+        'date': filter_date.isoformat(),
+        'reservations': [{
+            'id': r.id,
+            'customer_name': r.customer_name,
+            'customer_phone': r.customer_phone,
+            'party_size': r.party_size,
+            'reservation_date': r.reservation_date.isoformat(),
+            'reservation_time': r.reservation_time.strftime('%H:%M'),
+            'status': r.status,
+            'table_id': r.table_id,
+            'special_requests': r.special_requests
+        } for r in reservations]
+    })
+
+
+@api_bp.route('/floor-plan/<int:floor_plan_id>/reset-all-tables', methods=['POST'])
+def reset_all_tables(floor_plan_id):
+    """Reset all tables in a floor plan to 'free' status (end of day reset)"""
+    floor_plan = FloorPlan.query.get_or_404(floor_plan_id)
+    
+    try:
+        for table in floor_plan.tables:
+            table.current_status = 'free'
+            table.current_guest_name = None
+            table.current_guest_count = None
+            table.current_reservation_id = None
+            table.status_notes = None
+            table.status_updated_at = datetime.utcnow()
+        
+        db.session.commit()
+        return jsonify({
+            'success': True,
+            'message': f'Reset {floor_plan.tables.count()} tables to free status'
+        })
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
+
+# =============================================================================
 # AI ASSISTANT ENDPOINTS (Using OpenAI Agents SDK)
 # =============================================================================
 
@@ -322,8 +479,10 @@ def ai_transcribe():
 
         try:
             with open(tmp_path, 'rb') as audio_file:
+                # Get model from config
+                whisper_model = current_app.config.get('OPENAI_WHISPER_MODEL', 'whisper-1')
                 transcript = client.audio.transcriptions.create(
-                    model="whisper-1",
+                    model=whisper_model,
                     file=audio_file
                 )
 
@@ -356,14 +515,18 @@ def ai_speak():
 
     data = request.get_json()
     text = data.get('text')
-    voice = data.get('voice', 'alloy')
+    
+    # Get TTS settings from config, allow override from request
+    tts_model = current_app.config.get('OPENAI_TTS_MODEL', 'tts-1')
+    default_voice = current_app.config.get('OPENAI_TTS_VOICE', 'alloy')
+    voice = data.get('voice', default_voice)
 
     if not text:
         return jsonify({'error': 'Text is required'}), 400
 
     try:
         response = client.audio.speech.create(
-            model="tts-1",
+            model=tts_model,
             voice=voice,
             input=text
         )
@@ -428,8 +591,10 @@ def ai_voice_chat():
 
         try:
             with open(tmp_path, 'rb') as audio_file:
+                # Get model from config
+                whisper_model = current_app.config.get('OPENAI_WHISPER_MODEL', 'whisper-1')
                 transcript = client.audio.transcriptions.create(
-                    model="whisper-1",
+                    model=whisper_model,
                     file=audio_file
                 )
             user_text = transcript.text
