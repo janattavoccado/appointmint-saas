@@ -309,6 +309,7 @@ def get_restaurant_reservations(restaurant_id):
             'party_size': r.party_size,
             'reservation_date': r.reservation_date.isoformat(),
             'reservation_time': r.reservation_time.strftime('%H:%M'),
+            'duration_minutes': r.duration_minutes or 90,
             'status': r.status,
             'table_id': r.table_id,
             'special_requests': r.special_requests

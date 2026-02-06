@@ -473,6 +473,10 @@
                 <span class="detail-label">Party Size</span>
                 <span class="detail-value" id="detail-guest-count">-</span>
             </div>
+            <div class="detail-row" id="detail-reservation-time-row" style="display: none;">
+                <span class="detail-label">Reservation</span>
+                <span class="detail-value" id="detail-reservation-time">-</span>
+            </div>
             <div class="detail-row" id="detail-notes-row" style="display: none;">
                 <span class="detail-label">Notes</span>
                 <span class="detail-value" id="detail-notes">-</span>
@@ -875,6 +879,37 @@
             document.getElementById('detail-notes').textContent = table.status_notes;
         }
         
+        // Show linked reservation time range
+        const resTimeRow = document.getElementById('detail-reservation-time-row');
+        if (table.current_reservation_id && ['reserved', 'seated'].includes(status)) {
+            const linkedRes = todayReservations.find(r => r.id === table.current_reservation_id);
+            if (linkedRes) {
+                const endTime = calculateEndTime(linkedRes.reservation_time, linkedRes.duration_minutes || 90);
+                document.getElementById('detail-reservation-time').innerHTML = 
+                    `<span style="color: #2196F3; font-weight: 600;">${linkedRes.reservation_time} - ${endTime}</span>`;
+                resTimeRow.style.display = 'flex';
+            } else {
+                resTimeRow.style.display = 'none';
+            }
+        } else if (['reserved', 'seated'].includes(status)) {
+            // Try to find a matching reservation by table
+            const matchingRes = todayReservations.find(r => {
+                const tableMatch = r.table_id && floorPlanData.tables.find(t => 
+                    t.id === table.id && r.table_id === parseInt(t.table_id.replace(/\D/g, '')));
+                return tableMatch;
+            });
+            if (matchingRes) {
+                const endTime = calculateEndTime(matchingRes.reservation_time, matchingRes.duration_minutes || 90);
+                document.getElementById('detail-reservation-time').innerHTML = 
+                    `<span style="color: #2196F3; font-weight: 600;">${matchingRes.reservation_time} - ${endTime}</span>`;
+                resTimeRow.style.display = 'flex';
+            } else {
+                resTimeRow.style.display = 'none';
+            }
+        } else {
+            resTimeRow.style.display = 'none';
+        }
+        
         // Load reservations for this table
         loadTableReservations(table.table_id);
         
@@ -988,6 +1023,15 @@
         });
     }
     
+    // Calculate end time from start time and duration
+    function calculateEndTime(startTime, durationMinutes) {
+        const [hours, minutes] = startTime.split(':').map(Number);
+        const totalMinutes = hours * 60 + minutes + durationMinutes;
+        const endHours = Math.floor(totalMinutes / 60) % 24;
+        const endMinutes = totalMinutes % 60;
+        return `${String(endHours).padStart(2, '0')}:${String(endMinutes).padStart(2, '0')}`;
+    }
+    
     // Load today's reservations
     async function loadTodayReservations() {
         try {
@@ -1017,13 +1061,16 @@
             return;
         }
         
-        list.innerHTML = tableReservations.map(r => `
+        list.innerHTML = tableReservations.map(r => {
+            const endTime = calculateEndTime(r.reservation_time, r.duration_minutes || 90);
+            return `
             <div class="reservation-item">
-                <div class="time">${r.reservation_time}</div>
+                <div class="time">${r.reservation_time} - ${endTime}</div>
                 <div class="guest">${r.customer_name}</div>
                 <div class="party">${r.party_size} guests</div>
             </div>
-        `).join('');
+            `;
+        }).join('');
     }
     
     // Populate reservation dropdown
