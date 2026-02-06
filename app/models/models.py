@@ -272,7 +272,6 @@ class Restaurant(db.Model):
     # Relationships
     tables = db.relationship('Table', backref='restaurant', lazy=True, cascade='all, delete-orphan')
     reservations = db.relationship('Reservation', backref='restaurant', lazy=True, cascade='all, delete-orphan')
-    operating_hours = db.relationship('OperatingHours', backref='restaurant', lazy=True, cascade='all, delete-orphan')
     
     def __repr__(self):
         return f'<Restaurant {self.name}>'
@@ -446,6 +445,20 @@ class TableConfig(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     
+    # ========== REAL-TIME TABLE STATUS FIELDS ==========
+    # Status: free, reserved, reserved_spare, seated, completed
+    current_status = db.Column(db.String(20), default='free')
+    # Guest info when table is occupied
+    current_guest_name = db.Column(db.String(100))
+    current_guest_count = db.Column(db.Integer)
+    # When status was last updated
+    status_updated_at = db.Column(db.DateTime)
+    # Link to reservation if applicable
+    current_reservation_id = db.Column(db.Integer, db.ForeignKey('reservations.id', ondelete='SET NULL'), nullable=True)
+    # Notes about current status
+    status_notes = db.Column(db.Text)
+    # ==================================================
+    
     def to_dict(self):
         return {
             'id': self.id,
@@ -463,7 +476,15 @@ class TableConfig(db.Model):
             'is_active': self.is_active,
             'min_guests': self.min_guests,
             'max_guests': self.max_guests or self.seats,
-            'notes': self.notes
+            'notes': self.notes,
+            # ========== STATUS FIELDS ==========
+            'current_status': self.current_status or 'free',
+            'current_guest_name': self.current_guest_name,
+            'current_guest_count': self.current_guest_count,
+            'status_updated_at': self.status_updated_at.isoformat() if self.status_updated_at else None,
+            'current_reservation_id': self.current_reservation_id,
+            'status_notes': self.status_notes
+            # ===================================
         }
     
     def __repr__(self):
