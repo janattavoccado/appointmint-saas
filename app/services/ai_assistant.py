@@ -3,13 +3,14 @@ AI Assistant for Restaurant Reservations
 Based on conversation-history approach that maintains full context.
 Integrates with Chatwoot/WhatsApp and persists conversation history in database.
 Supports interactive buttons for confirmations.
+Includes smart table assignment based on floor plan availability.
 """
 
 from flask import Flask
 from openai import OpenAI
 from pydantic import BaseModel, Field, ValidationError
-from datetime import datetime, timedelta
-from typing import Optional, List, Dict, Any
+from datetime import datetime, timedelta, date, time
+from typing import Optional, List, Dict, Any, Tuple
 import pytz
 import os
 import json
@@ -42,6 +43,20 @@ class TableReservation(BaseModel):
                 "special_requests": "Window seat preferred"
             }
         }
+
+
+class TableAvailabilityResult(BaseModel):
+    """Result of table availability check"""
+    available: bool = Field(..., description="Whether a suitable table was found")
+    table_config_id: Optional[int] = Field(None, description="TableConfig database ID")
+    table_id: Optional[str] = Field(None, description="Table identifier (e.g., T1, T2)")
+    table_name: Optional[str] = Field(None, description="Table name if set")
+    seats: Optional[int] = Field(None, description="Number of seats at the table")
+    table_type: Optional[str] = Field(None, description="Table type (standard, booth, etc.)")
+    current_status: Optional[str] = Field(None, description="Current table status")
+    next_reservation_at: Optional[str] = Field(None, description="Next reservation time on this table")
+    minutes_until_next: Optional[int] = Field(None, description="Minutes until next reservation")
+    reason: Optional[str] = Field(None, description="Reason if no table available")
 
 
 class InteractiveButton(BaseModel):
@@ -189,6 +204,294 @@ def add_to_conversation_history(
 
 
 # =============================================================================
+# TABLE AVAILABILITY TOOL
+# =============================================================================
+
+def find_available_table(
+    restaurant_id: int,
+    reservation_date: str,
+    reservation_time: str,
+    party_size: int,
+    duration_minutes: int = 90,
+    app: Flask = None
+) -> TableAvailabilityResult:
+    """
+    Find the best available table for a reservation.
+    
+    Logic:
+    1. Get all tables from the restaurant's active floor plan
+    2. Filter for tables with status 'free' or 'completed' (needs cleaning)
+    3. Filter for tables with enough seats (seats >= party_size)
+    4. Check existing reservations on the requested date for each table
+    5. Ensure at least 90 minutes gap before the next reservation
+    6. Return the best match (smallest suitable table to optimize seating)
+    
+    Args:
+        restaurant_id: Restaurant ID
+        reservation_date: Date in YYYY-MM-DD format
+        reservation_time: Time in HH:MM format (24-hour)
+        party_size: Number of guests
+        duration_minutes: Duration of the reservation in minutes (default 90)
+        app: Flask app for database context
+    
+    Returns:
+        TableAvailabilityResult with the best available table or reason for unavailability
+    """
+    from app.models import FloorPlan, TableConfig
+    
+    try:
+        # Parse the requested date and time
+        req_date = datetime.strptime(reservation_date, '%Y-%m-%d').date()
+        req_time = datetime.strptime(reservation_time, '%H:%M').time()
+        req_datetime = datetime.combine(req_date, req_time)
+        req_end_datetime = req_datetime + timedelta(minutes=duration_minutes)
+        
+        print(f"\n{'='*60}", flush=True)
+        print(f"=== TABLE AVAILABILITY CHECK ===", flush=True)
+        print(f"Restaurant: {restaurant_id}", flush=True)
+        print(f"Date: {reservation_date}, Time: {reservation_time}", flush=True)
+        print(f"Party size: {party_size}, Duration: {duration_minutes} min", flush=True)
+        print(f"Requested slot: {req_datetime} - {req_end_datetime}", flush=True)
+        
+        # Get the active floor plan for this restaurant
+        floor_plan = FloorPlan.query.filter_by(
+            restaurant_id=restaurant_id,
+            is_active=True
+        ).first()
+        
+        if not floor_plan:
+            print("No active floor plan found", flush=True)
+            return TableAvailabilityResult(
+                available=False,
+                reason="No floor plan configured for this restaurant"
+            )
+        
+        # Get all active tables from the floor plan
+        all_tables = TableConfig.query.filter_by(
+            floor_plan_id=floor_plan.id,
+            is_active=True
+        ).all()
+        
+        if not all_tables:
+            print("No tables found in floor plan", flush=True)
+            return TableAvailabilityResult(
+                available=False,
+                reason="No tables configured in the floor plan"
+            )
+        
+        print(f"Found {len(all_tables)} active tables in floor plan", flush=True)
+        
+        # Filter tables by capacity (seats >= party_size)
+        suitable_tables = [t for t in all_tables if t.seats >= party_size]
+        
+        if not suitable_tables:
+            max_seats = max(t.seats for t in all_tables)
+            print(f"No tables with enough seats. Max capacity: {max_seats}", flush=True)
+            return TableAvailabilityResult(
+                available=False,
+                reason=f"No tables available with {party_size} or more seats. Maximum table capacity is {max_seats} seats."
+            )
+        
+        print(f"{len(suitable_tables)} tables have enough seats", flush=True)
+        
+        # Filter tables by current status (free or completed/needs cleaning)
+        available_status_tables = [
+            t for t in suitable_tables 
+            if (t.current_status or 'free') in ('free', 'completed')
+        ]
+        
+        if not available_status_tables:
+            print("No tables with free/completed status", flush=True)
+            return TableAvailabilityResult(
+                available=False,
+                reason=f"All suitable tables are currently occupied or reserved. Please try a different time."
+            )
+        
+        print(f"{len(available_status_tables)} tables are free or need cleaning", flush=True)
+        
+        # Get all reservations for this restaurant on the requested date
+        day_reservations = Reservation.query.filter(
+            Reservation.restaurant_id == restaurant_id,
+            Reservation.reservation_date == req_date,
+            Reservation.status.in_(['pending', 'confirmed'])
+        ).all()
+        
+        print(f"Found {len(day_reservations)} reservations on {reservation_date}", flush=True)
+        
+        # Check each available table for time conflicts
+        candidates = []
+        
+        for table in available_status_tables:
+            # Find reservations linked to this specific table
+            # Match by table_id (T1, T2, etc.) or by table_config linked reservation
+            table_reservations = []
+            
+            for res in day_reservations:
+                # Check if this reservation is linked to this table
+                # via the table_id field or via current_reservation_id
+                is_linked = False
+                
+                # Check by table_id (the old Table model ID)
+                if res.table_id:
+                    # Try to match table_id with the table_config's table_id string
+                    # The Reservation.table_id references the old Table model
+                    # We need to check if there's a mapping
+                    pass
+                
+                # Check by current_reservation_id on the table config
+                if table.current_reservation_id == res.id:
+                    is_linked = True
+                
+                # Also check by matching table name/number patterns
+                # This handles cases where reservations reference the table by name
+                if res.table_id:
+                    # Try to find the old Table model and match by table_number
+                    from app.models import Table
+                    old_table = Table.query.get(res.table_id)
+                    if old_table and old_table.table_number == table.table_id:
+                        is_linked = True
+                
+                if is_linked:
+                    table_reservations.append(res)
+            
+            # Check time conflicts with existing reservations on this table
+            has_conflict = False
+            next_reservation_time = None
+            minutes_until_next = None
+            
+            for res in table_reservations:
+                res_start = datetime.combine(req_date, res.reservation_time)
+                res_duration = res.duration_minutes or 90
+                res_end = res_start + timedelta(minutes=res_duration)
+                
+                # Check if the requested slot overlaps with this reservation
+                # We need at least 90 minutes gap
+                # Requested: req_datetime to req_end_datetime
+                # Existing: res_start to res_end
+                
+                # Conflict if: requested start < existing end AND requested end > existing start
+                # But we also need 90 min buffer, so:
+                # No conflict if: req_end_datetime <= res_start (with no overlap)
+                # AND req_datetime >= res_end (with no overlap)
+                
+                if req_datetime < res_end and req_end_datetime > res_start:
+                    # Direct overlap
+                    has_conflict = True
+                    print(f"  Table {table.table_id}: CONFLICT with reservation {res.id} ({res_start} - {res_end})", flush=True)
+                    break
+                
+                # Check if there's at least 90 min gap before next reservation
+                if res_start > req_datetime:
+                    gap_minutes = (res_start - req_datetime).total_seconds() / 60
+                    if gap_minutes < 90:
+                        has_conflict = True
+                        print(f"  Table {table.table_id}: Only {gap_minutes:.0f} min gap before reservation at {res_start}", flush=True)
+                        break
+                    
+                    # Track the next reservation for info
+                    if next_reservation_time is None or res_start < datetime.combine(req_date, datetime.strptime(next_reservation_time, '%H:%M').time()):
+                        next_reservation_time = res.reservation_time.strftime('%H:%M')
+                        minutes_until_next = int(gap_minutes)
+            
+            if not has_conflict:
+                candidates.append({
+                    'table': table,
+                    'next_reservation_at': next_reservation_time,
+                    'minutes_until_next': minutes_until_next
+                })
+                print(f"  Table {table.table_id}: AVAILABLE (seats: {table.seats}, status: {table.current_status})", flush=True)
+            
+        if not candidates:
+            print("No tables available after time conflict check", flush=True)
+            return TableAvailabilityResult(
+                available=False,
+                reason=f"No tables available at {reservation_time} on {reservation_date} with enough time before the next reservation. Please try a different time."
+            )
+        
+        # Sort candidates: prefer smallest table that fits (optimize seating)
+        # Secondary sort: prefer 'free' over 'completed' (needs cleaning)
+        candidates.sort(key=lambda c: (
+            0 if (c['table'].current_status or 'free') == 'free' else 1,  # free first
+            c['table'].seats,  # smallest table first
+        ))
+        
+        best = candidates[0]
+        best_table = best['table']
+        
+        print(f"\n=== BEST TABLE: {best_table.table_id} ({best_table.seats} seats, status: {best_table.current_status}) ===", flush=True)
+        
+        return TableAvailabilityResult(
+            available=True,
+            table_config_id=best_table.id,
+            table_id=best_table.table_id,
+            table_name=best_table.table_name,
+            seats=best_table.seats,
+            table_type=best_table.table_type,
+            current_status=best_table.current_status or 'free',
+            next_reservation_at=best['next_reservation_at'],
+            minutes_until_next=best['minutes_until_next'],
+            reason=None
+        )
+        
+    except Exception as e:
+        print(f"Error in find_available_table: {e}", flush=True)
+        import traceback
+        traceback.print_exc()
+        return TableAvailabilityResult(
+            available=False,
+            reason=f"Error checking table availability: {str(e)}"
+        )
+
+
+def assign_table_for_reservation(
+    table_config_id: int,
+    reservation_id: int,
+    guest_name: str,
+    party_size: int,
+    app: Flask = None
+) -> bool:
+    """
+    Assign a table to a reservation and update the table's status to 'reserved'.
+    
+    Args:
+        table_config_id: TableConfig database ID
+        reservation_id: Reservation database ID
+        guest_name: Guest name to display on the floor plan
+        party_size: Number of guests
+        app: Flask app for database context
+    
+    Returns:
+        True if successful, False otherwise
+    """
+    from app.models import TableConfig
+    
+    try:
+        table = TableConfig.query.get(table_config_id)
+        if not table:
+            print(f"Table config {table_config_id} not found", flush=True)
+            return False
+        
+        # Update table status
+        table.current_status = 'reserved'
+        table.current_guest_name = guest_name
+        table.current_guest_count = party_size
+        table.current_reservation_id = reservation_id
+        table.status_updated_at = datetime.utcnow()
+        table.status_notes = f"Auto-assigned by booking agent"
+        
+        db.session.commit()
+        print(f"Table {table.table_id} assigned to reservation {reservation_id} for {guest_name}", flush=True)
+        return True
+        
+    except Exception as e:
+        print(f"Error assigning table: {e}", flush=True)
+        import traceback
+        traceback.print_exc()
+        db.session.rollback()
+        return False
+
+
+# =============================================================================
 # RESERVATION ASSISTANT CLASS
 # =============================================================================
 
@@ -259,6 +562,44 @@ class ReservationAssistant:
             "timezone": str(self._timezone)
         }
     
+    def _check_table_availability(self, reservation_date: str, reservation_time: str, party_size: int) -> str:
+        """
+        Check table availability and return a human-readable summary.
+        This is the @tool that the booking agent uses.
+        
+        Args:
+            reservation_date: Date in YYYY-MM-DD format
+            reservation_time: Time in HH:MM format
+            party_size: Number of guests
+        
+        Returns:
+            String summary of availability for the AI to use in its response
+        """
+        result = find_available_table(
+            restaurant_id=self.restaurant_id,
+            reservation_date=reservation_date,
+            reservation_time=reservation_time,
+            party_size=party_size,
+            app=self.app
+        )
+        
+        if result.available:
+            table_desc = result.table_id
+            if result.table_name:
+                table_desc = f"{result.table_id} ({result.table_name})"
+            
+            summary = f"TABLE AVAILABLE: {table_desc} with {result.seats} seats"
+            if result.table_type and result.table_type != 'standard':
+                summary += f" ({result.table_type})"
+            if result.current_status == 'completed':
+                summary += " [currently needs cleaning - will be ready]"
+            if result.next_reservation_at:
+                summary += f". Next reservation on this table at {result.next_reservation_at} ({result.minutes_until_next} min from requested time)"
+            
+            return summary
+        else:
+            return f"NO TABLE AVAILABLE: {result.reason}"
+    
     def _create_system_prompt(self, customer_name: Optional[str] = None, customer_phone: Optional[str] = None) -> str:
         """Create the system prompt with current context."""
         datetime_info = self._get_current_datetime_info()
@@ -301,6 +642,16 @@ YOUR RESPONSIBILITIES:
    - Phone number (use the known phone if available, or ask)
    - Any special requests (optional)
 
+SMART TABLE ASSIGNMENT:
+- When you have collected the date, time, and number of guests, a table availability check will be performed automatically
+- The system will find the best available table based on:
+  * Tables that are currently free or need cleaning (will be ready)
+  * Tables with enough seats for the party
+  * Tables with at least 90 minutes before the next reservation
+- If a TABLE AVAILABLE message appears in the conversation, include the assigned table info in the confirmation
+- If NO TABLE AVAILABLE, inform the customer and suggest alternative times
+- You do NOT need to ask the customer which table they want - the system assigns the best one automatically
+
 CRITICAL: MAINTAIN CONVERSATION CONTEXT
 - You are having a CONTINUOUS conversation with the customer
 - REMEMBER all information they have already provided in this conversation
@@ -311,7 +662,7 @@ CRITICAL: MAINTAIN CONVERSATION CONTEXT
 - If the customer's name and phone are already known (shown above), use them and just confirm
 
 CONFIRMATION PROCESS:
-When you have collected ALL required information (date, time, guests, name, phone), you MUST:
+When you have collected ALL required information (date, time, guests, name, phone) AND a table is available, you MUST:
 1. First, show a summary and ask for confirmation with this EXACT format:
 
 [CONFIRMATION_NEEDED]
@@ -321,6 +672,7 @@ When you have collected ALL required information (date, time, guests, name, phon
 👥 Guests: [number]
 👤 Name: [name]
 📞 Phone: [phone]
+🪑 Table: [table info from availability check]
 📝 Special Requests: [requests or "None"]
 
 Please confirm your reservation:
@@ -388,8 +740,63 @@ RESPONSE GUIDELINES:
         except Exception as e:
             print(f"Error storing memory: {e}", flush=True)
     
-    def _save_reservation(self, reservation_data: Dict[str, Any], customer_phone: str) -> bool:
-        """Save reservation to database."""
+    def _extract_booking_details(self, conversation_history: List[Dict], current_message: str) -> Optional[Dict]:
+        """
+        Try to extract date, time, and party size from the conversation so far
+        to perform an early table availability check.
+        
+        Returns dict with 'date', 'time', 'guests' if all three are found, else None.
+        """
+        # Build the full conversation text
+        full_text = ""
+        for msg in conversation_history:
+            full_text += f"\n{msg['role']}: {msg['content']}"
+        full_text += f"\nuser: {current_message}"
+        
+        # Use a simple LLM call to extract structured data
+        try:
+            extraction_response = self.openai_client.chat.completions.create(
+                model="gpt-4o",
+                messages=[
+                    {"role": "system", "content": """Extract reservation details from the conversation. 
+Return ONLY a JSON object with these fields (use null if not mentioned):
+{"date": "YYYY-MM-DD or null", "time": "HH:MM or null", "guests": number or null}
+
+Important:
+- Convert relative dates (today, tomorrow, etc.) to actual dates
+- Convert 12-hour times to 24-hour format
+- Only extract information explicitly stated by the user"""},
+                    {"role": "user", "content": full_text}
+                ],
+                temperature=0,
+                max_tokens=100
+            )
+            
+            result_text = extraction_response.choices[0].message.content.strip()
+            # Clean up potential markdown formatting
+            if result_text.startswith('```'):
+                result_text = result_text.split('\n', 1)[1] if '\n' in result_text else result_text[3:]
+                result_text = result_text.rsplit('```', 1)[0]
+            
+            extracted = json.loads(result_text)
+            
+            if extracted.get('date') and extracted.get('time') and extracted.get('guests'):
+                return extracted
+            
+        except Exception as e:
+            print(f"Error extracting booking details: {e}", flush=True)
+        
+        return None
+    
+    def _save_reservation(self, reservation_data: Dict[str, Any], customer_phone: str, table_availability: Optional[TableAvailabilityResult] = None) -> bool:
+        """
+        Save reservation to database and assign table if available.
+        
+        Args:
+            reservation_data: Reservation details
+            customer_phone: Customer phone number
+            table_availability: Pre-checked table availability result
+        """
         with self.app.app_context():
             try:
                 # Parse date and time
@@ -414,6 +821,34 @@ RESPONSE GUIDELINES:
                 db.session.commit()
                 
                 print(f"Reservation saved: {reservation.id}", flush=True)
+                
+                # If we have a table availability result, assign the table
+                if table_availability and table_availability.available and table_availability.table_config_id:
+                    assign_table_for_reservation(
+                        table_config_id=table_availability.table_config_id,
+                        reservation_id=reservation.id,
+                        guest_name=reservation_data['name'],
+                        party_size=reservation_data['guests'],
+                        app=self.app
+                    )
+                else:
+                    # Try to find a table now if we don't have one pre-checked
+                    availability = find_available_table(
+                        restaurant_id=self.restaurant_id,
+                        reservation_date=reservation_data['date'],
+                        reservation_time=reservation_data['time'],
+                        party_size=reservation_data['guests'],
+                        app=self.app
+                    )
+                    if availability.available and availability.table_config_id:
+                        assign_table_for_reservation(
+                            table_config_id=availability.table_config_id,
+                            reservation_id=reservation.id,
+                            guest_name=reservation_data['name'],
+                            party_size=reservation_data['guests'],
+                            app=self.app
+                        )
+                
                 return True
             except Exception as e:
                 print(f"Error saving reservation: {e}", flush=True)
@@ -482,8 +917,41 @@ RESPONSE GUIDELINES:
         if memory_context:
             system_prompt += f"\n\nRELEVANT CUSTOMER HISTORY FROM PREVIOUS VISITS:\n{memory_context}"
         
+        # =====================================================================
+        # TABLE AVAILABILITY CHECK
+        # Try to extract date, time, guests from conversation to check availability
+        # =====================================================================
+        table_availability = None
+        availability_context = ""
+        
+        try:
+            booking_details = self._extract_booking_details(conversation_history, message)
+            if booking_details:
+                print(f"Extracted booking details: {booking_details}", flush=True)
+                
+                # Check table availability
+                availability_summary = self._check_table_availability(
+                    reservation_date=booking_details['date'],
+                    reservation_time=booking_details['time'],
+                    party_size=booking_details['guests']
+                )
+                
+                # Store the full result for later use when saving
+                table_availability = find_available_table(
+                    restaurant_id=self.restaurant_id,
+                    reservation_date=booking_details['date'],
+                    reservation_time=booking_details['time'],
+                    party_size=booking_details['guests'],
+                    app=self.app
+                )
+                
+                availability_context = f"\n\n[TABLE AVAILABILITY CHECK RESULT]\n{availability_summary}\n[END TABLE AVAILABILITY]"
+                print(f"Table availability: {availability_summary}", flush=True)
+        except Exception as e:
+            print(f"Error during table availability check: {e}", flush=True)
+        
         # Build messages for OpenAI
-        messages = [{"role": "system", "content": system_prompt}]
+        messages = [{"role": "system", "content": system_prompt + availability_context}]
         
         # Add conversation history
         messages.extend(conversation_history)
@@ -554,8 +1022,20 @@ RESPONSE GUIDELINES:
                         reservation = TableReservation(**parsed['data'])
                         reservation_data = reservation.model_dump()
                         
-                        # Save to database
-                        self._save_reservation(reservation_data, sender_phone or '')
+                        # Save to database WITH table assignment
+                        self._save_reservation(
+                            reservation_data, 
+                            sender_phone or '',
+                            table_availability=table_availability
+                        )
+                        
+                        # Build table info for confirmation message
+                        table_info = ""
+                        if table_availability and table_availability.available:
+                            table_desc = table_availability.table_id
+                            if table_availability.table_name:
+                                table_desc = f"{table_availability.table_id} ({table_availability.table_name})"
+                            table_info = f"\n🪑 Table: {table_desc} ({table_availability.seats} seats)"
                         
                         # Generate confirmation message
                         special_req_text = f"\n📝 Special Requests: {reservation_data['special_requests']}" if reservation_data.get('special_requests') else ""
@@ -566,7 +1046,7 @@ RESPONSE GUIDELINES:
 🕐 Time: {reservation_data['time']}
 👥 Guests: {reservation_data['guests']}
 👤 Name: {reservation_data['name']}
-📞 Phone: {reservation_data['phone']}{special_req_text}
+📞 Phone: {reservation_data['phone']}{table_info}{special_req_text}
 
 Thank you for your reservation! We look forward to welcoming you. You will receive a confirmation shortly."""
                         
